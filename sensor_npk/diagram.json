@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "author": "Huynh Quoc Huy",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-breadboard", "id": "bb1", "top": 141, "left": -54.8, "attrs": {} },
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": -76.8, "left": -4.76, "attrs": {} },
+    { "type": "chip-npk-sensor", "id": "chip1", "top": 39.42, "left": 177.6, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:5V", "bb1:tp.1", "red", [ "h0" ] ],
+    [ "esp:GND.1", "bb1:tn.1", "black", [ "h-38.25", "v86.5" ] ],
+    [ "chip1:VCC", "bb1:tp.16", "red", [ "h0" ] ],
+    [ "chip1:GND", "bb1:tn.17", "black", [ "h0" ] ],
+    [ "chip1:BO_P", "bb1:35t.a", "yellow", [ "v0", "h-20" ] ],
+    [ "esp:35", "bb1:35t.e", "yellow", [ "h-57.45", "v249.6", "h355.2" ] ],
+    [ "chip1:AO_N", "bb1:23t.a", "green", [ "h0" ] ],
+    [ "esp:34", "bb1:23t.e", "green", [ "h-67.05", "v249.6", "h249.6" ] ],
+    [ "chip1:CO_K", "bb1:36t.a", "blue", [ "h0" ] ],
+    [ "esp:32", "bb1:36t.e", "blue", [ "h-47.85", "v259.2", "h355.2" ] ]
+  ],
+  "dependencies": { "npk-sensor.chip.json": "latest", "npk-sensor.chip.c": "latest" }
+}
