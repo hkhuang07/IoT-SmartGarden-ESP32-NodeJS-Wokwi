@@ -1,7 +1,7 @@
-/iot-nodejs-server/node_modules
-/iot-nodejs-server/db_connection.js
-/iot-nodejs-server/package-lock.json
-/iot-nodejs-server/package.json
+/smartgarden-mqtt-broker-nodejs/node_modules
+/smartgarden-mqtt-broker-nodejs/db_connection.js
+/smartgarden-mqtt-broker-nodejs/package-lock.json
+/smartgarden-mqtt-broker-nodejs/package.json
 
 
 /mongodb_iot_smartgarden_user.jpg
