@@ -1,4 +1,4 @@
-# 🌿 IoT Smart Garden & PHP E-Commerce Platform
+# 🌿 IoT Smart Garden NodeJS & PHP E-Commerce Platform
 
 This repository contains the integrated final project, combining an **IoT Smart Garden** system built on ESP32/Wokwi with a **PHP Web Technology** platform for e-commerce and real-time data visualization.
 
