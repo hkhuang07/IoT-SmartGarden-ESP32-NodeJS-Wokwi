@@ -2,10 +2,13 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <DHT.h>             
-#include <Wokwi_MQTT.h>
+
+#define DHTPIN 4     
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
 
 //MQTT Model & Wifi Configuration
-const char* mqtt_server = "127.0.0.1"; 
+const char* mqtt_server = "mqtt-broker.hkhuang07.me"; 
 const int mqtt_port = 1883;
 
 //Client ID 
@@ -27,13 +30,13 @@ void setup_wifi(){
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED){
      delay(500);
-     Serial.print(=);
+     Serial.print("=");
   }
   Serial.println(">\nWiFi connected!");
 
-  Wokwi_MQTT_Config config;
+  /*Wokwi_MQTT_Config config;
   config.broker_url = (char*)("tcp://" + String(mqtt_server) + ":" + String(mqtt_port)).c_str();
-  Wokwi_MQTT_Setup(&config);
+  Wokwi_MQTT_Setup(&config);*/
 }
 
 void reconnect() {
@@ -64,16 +67,16 @@ void loop()
     lastMsg = now;
 
     //Read Data from DTH22
-    float temperature = dth.readTemperature();
-    float humidity= dth.readHumidity();
+    float temperature= dht.readTemperature();
+    float humidity= dht.readHumidity();
 
     if(isnan(temperature) || isnan(humidity)){
-      Serial.println("Failed to read from DTH22 sensor! Skipping publish");
+      Serial.println("  Failed to read from DTH22 sensor! Skipping publish");
       return;
     }
 
     StaticJsonDocument<256> doc;
-    doc["t"] = temp;
+    doc["t"] = temperature;
     doc["h"] = humidity;
 
     char payload_str[256];
@@ -82,7 +85,7 @@ void loop()
     client.publish("smartgarden/sensor/temp_humidity",payload_str);
 
     Serial.print("Published data: ");
-    Serial.print(payoad_str);
+    Serial.println(payload_str);
   }
 }
 

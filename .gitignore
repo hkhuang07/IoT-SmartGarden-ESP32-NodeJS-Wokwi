@@ -1,7 +1,7 @@
-/iot-gateway-server/node_modules
-/iot-gateway-server/db_connection.js
-/iot-gateway-server/package-lock.json
-/iot-gateway-server/package.json
+/iot-nodejs-server/node_modules
+/iot-nodejs-server/db_connection.js
+/iot-nodejs-server/package-lock.json
+/iot-nodejs-server/package.json
 
 
 /mongodb_iot_smartgarden_user.jpg

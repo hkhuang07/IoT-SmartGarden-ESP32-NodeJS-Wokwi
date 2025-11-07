@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "author": "Huynh Quoc Huy",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-breadboard", "id": "bb1", "top": 246.6, "left": -294.8, "attrs": {} },
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": -254.36, "attrs": {} },
+    { "type": "wokwi-photoresistor-sensor", "id": "ldr1", "top": 32, "left": 48.8, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX"{
+  "version": 1,
+  "author": "Huynh Quoc Huy",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-breadboard", "id": "bb1", "top": 141, "left": -54.8, "attrs": {} },
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": -76.8, "left": -4.76, "attrs": {} },
+    {
+      "type": "chip-soil-moisture-sensor",
+      "id": "chip1",
+      "top": 39.42,
+      "left": 177.6,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:5V", "bb1:tp.1", "red", [ "h0" ] ],
+    [ "esp:GND.1", "bb1:tn.1", "black", [ "h-38.25", "v86.5" ] ],
+    [ "chip1:VCC", "bb1:tp.16", "red", [ "h0" ] ],
+    [ "chip1:GND", "bb1:tn.17", "black", [ "h0" ] ],
+    [ "esp:34", "bb1:36t.e", "green", [ "h-47.85", "v249.6", "h355.2" ] ],
+    [ "chip1:AO", "bb1:36t.a", "green", [ "v0", "h21.01" ] ]
+  ],
+  "dependencies": {}
+}, "$serialMonitor:TX", "", [] ],
+    [ "esp:GND.1", "bb1:tn.1", "black", [ "h-19.05", "v134.4" ] ],
+    [ "esp:3V3", "bb1:tp.1", "red", [ "h-9.45", "v230.4" ] ],
+    [ "ldr1:VCC", "bb1:55t.a", "red", [ "h19.2", "v0", "h9.6" ] ],
+    [ "ldr1:GND", "bb1:tn.44", "black", [ "h0" ] ],
+    [ "ldr1:AO", "bb1:53t.a", "blue", [ "h0" ] ],
+    [
+      "esp:32",
+      "bb1:53t.e",
+      "blue",
+      [ "h-19.05", "v-115.2", "h278.4", "v0", "h28.8", "v144", "h182.4", "v230.4", "h9.6" ]
+    ]
+  ],
+  "dependencies": {}
+}
