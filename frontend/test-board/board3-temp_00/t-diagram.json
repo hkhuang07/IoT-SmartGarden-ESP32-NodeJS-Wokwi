@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "author": "Huynh Quoc Huy",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": -250,
+      "attrs": {
+        "env": "micropython-20231227-v1.22.0"
+      }
+    },
+    {
+      "type": "wokwi-breadboard",
+      "id": "bb1",
+      "top": 237,
+      "left": -285.2,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo1",
+      "top": -30.8,
+      "left": -67.2,
+      "attrs": {
+        "label": "Water Valve"
+      }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo2",
+      "top": 55.6,
+      "left": 9.6,
+      "attrs": {
+        "label": "Roof Cover"
+      }
+    },
+    {
+      "type": "wokwi-lcd2004",
+      "id": "lcd1",
+      "top": -3.2,
+      "left": 255.2,
+      "attrs": {
+        "pins": "i2c"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn1",
+      "top": 188.6,
+      "left": -28.8,
+      "attrs": {
+        "color": "blue",
+        "label": "VALVE"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn2",
+      "top": 188.6,
+      "left": 48.8,
+      "attrs": {
+        "color": "green",
+        "label": "ROOF"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn3",
+      "top": 188.6,
+      "left": 115.2,
+      "attrs": {
+        "color": "red",
+        "label": "AUTO/MAN"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": -50.8,
+      "left": 67.2,
+      "attrs": {
+        "color": "green"
+      }
+    }
+  ],
+  "connections": [
+    ["esp:TX", "$serialMonitor:RX", "", []],
+    ["esp:RX", "$serialMonitor:TX", "", []],
+    ["esp:3V3", "bb1:tp.1", "red", ["h-23.41", "v220.5"]],
+    ["esp:GND.1", "bb1:tn.1", "black", ["h-10", "v160"]],
+    ["servo1:", "bb1:tp.10", "red", ["h0"]],
+    ["servo1:SIVCCG", "esp:15", "orange", ["v-150", "h100"]],
+    ["servo1:GND", "bb1:tn.15", "black", ["h-9.6", "v144"]],
+    ["servo1:V+", "bb1:tp.15", "red", ["h-19.2", "v0.1"]],
+    ["servo2:VCC", "bb1:tp.20", "red", ["h0"]],
+    ["servo2:SIG", "esp:14", "yellow", ["v-150", "h120"]],
+    ["servo2:GND", "bb1:tn.20", "black", ["h-9.6", "v144"]],
+    ["servo2:V+", "bb1:tp.25", "red", ["h-19.2", "v0.1"]],
+    ["esp:21", "lcd1:SDA", "blue", ["v-150", "h300"]],
+    ["esp:22", "lcd1:SCL", "yellow", ["v-130", "h320"]],
+    ["esp:2", "led1:A", "green", ["v-100", "h50"]],
+    ["esp:GND.2", "led1:K", "black", ["v-80", "h30"]],
+    ["btn1:1", "esp:25", "blue", ["v-150", "h30"]],
+    ["btn2:1", "esp:26", "green", ["v-150", "h50"]],
+    ["btn3:1", "esp:27", "red", ["v-150", "h70"]],
+    ["btn1:2", "esp:GND.3", "black", ["v-100", "h20"]],
+    ["btn2:2", "esp:GND.3", "black", ["v-100", "h40"]],
+    ["btn3:2", "esp:GND.3", "black", ["v-100", "h60"]],
+    ["lcd1:VSS", "esp:GND.4", "black", ["v-30", "h350"]],
+    ["lcd1:VDD", "bb1:tp.30", "red", ["v-30", "h280"]],
+    ["lcd1:A", "bb1:tp.35", "red", ["v-30", "h260"]],
+    ["lcd1:K", "bb1:tn.35", "black", ["v-30", "h240"]]
+  ],
+  "dependencies": {}
+}

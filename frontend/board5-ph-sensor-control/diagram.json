@@ -1,0 +1,252 @@
+{
+  "version": 1,
+  "author": "MiniMax Agent",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp32",
+      "top": 0,
+      "left": 0,
+      "attrs": {
+        "flash": "4MB",
+        "psram": "8MB"
+      }
+    },
+    {
+      "type": "ph-sensor",
+      "id": "ph-sensor",
+      "top": -150,
+      "left": 80,
+      "attrs": {
+        "ph": "7.0"
+      }
+    },
+    {
+      "type": "wokwi-continuous-servo",
+      "id": "acid-dosing-servo",
+      "top": -120,
+      "left": 280,
+      "attrs": {
+        "position": "90"
+      }
+    },
+    {
+      "type": "wokwi-continuous-servo", 
+      "id": "alkaline-dosing-servo",
+      "top": -120,
+      "left": 380,
+      "attrs": {
+        "position": "90"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "acid-led",
+      "top": -80,
+      "left": 220,
+      "attrs": {
+        "color": "red"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "alkaline-led",
+      "top": -80,
+      "left": 280,
+      "attrs": {
+        "color": "blue"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "optimal-led",
+      "top": -80,
+      "left": 340,
+      "attrs": {
+        "color": "green"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "status-led",
+      "top": -80,
+      "left": 400,
+      "attrs": {
+        "color": "yellow"
+      }
+    },
+    {
+      "type": "wokwi-button",
+      "id": "calibrate-button",
+      "top": 20,
+      "left": 120,
+      "attrs": {
+        "pressed": false
+      }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "ph-threshold-pot",
+      "top": 20,
+      "left": 200,
+      "attrs": {
+        "value": "70"
+      }
+    },
+    {
+      "type": "wokwi-lcd1602",
+      "id": "lcd-display",
+      "top": 20,
+      "left": 300,
+      "attrs": {
+        "pins": "i2c"
+      }
+    },
+    {
+      "type": "wokwi-slide-switch",
+      "id": "auto-mode-switch",
+      "top": 20,
+      "left": 500,
+      "attrs": {
+        "on": true
+      }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "alert-buzzer",
+      "top": -80,
+      "left": 500,
+      "attrs": {}
+    }
+  ],
+  "wires": [
+    {
+      "from": "esp32:GND.1",
+      "to": "ph-sensor:GND"
+    },
+    {
+      "from": "esp32:3V3.1", 
+      "to": "ph-sensor:VCC"
+    },
+    {
+      "from": "ph-sensor:AO",
+      "to": "esp32:GPIO34"
+    },
+    {
+      "from": "ph-sensor:DO",
+      "to": "esp32:GPIO35"
+    },
+    {
+      "from": "acid-dosing-servo:GND",
+      "to": "esp32:GND.2"
+    },
+    {
+      "from": "acid-dosing-servo:VCC",
+      "to": "esp32:5V"
+    },
+    {
+      "from": "acid-dosing-servo:SIG",
+      "to": "esp32:GPIO4"
+    },
+    {
+      "from": "alkaline-dosing-servo:GND",
+      "to": "esp32:GND.3"
+    },
+    {
+      "from": "alkaline-dosing-servo:VCC",
+      "to": "esp32:5V"
+    },
+    {
+      "from": "alkaline-dosing-servo:SIG",
+      "to": "esp32:GPIO5"
+    },
+    {
+      "from": "acid-led:C",
+      "to": "esp32:GND.4"
+    },
+    {
+      "from": "acid-led:A",
+      "to": "esp32:GPIO25"
+    },
+    {
+      "from": "alkaline-led:C",
+      "to": "esp32:GND.5"
+    },
+    {
+      "from": "alkaline-led:A", 
+      "to": "esp32:GPIO26"
+    },
+    {
+      "from": "optimal-led:C",
+      "to": "esp32:GND.6"
+    },
+    {
+      "from": "optimal-led:A",
+      "to": "esp32:GPIO27"
+    },
+    {
+      "from": "status-led:C",
+      "to": "esp32:GND.7"
+    },
+    {
+      "from": "status-led:A",
+      "to": "esp32:GPIO2"
+    },
+    {
+      "from": "calibrate-button:2",
+      "to": "esp32:GPIO23"
+    },
+    {
+      "from": "calibrate-button:1",
+      "to": "esp32:GND.8"
+    },
+    {
+      "from": "ph-threshold-pot:GND",
+      "to": "esp32:GND.9"
+    },
+    {
+      "from": "ph-threshold-pot:VCC",
+      "to": "esp32:3V3.2"
+    },
+    {
+      "from": "ph-threshold-pot:SIG",
+      "to": "esp32:GPIO32"
+    },
+    {
+      "from": "lcd-display:VSS",
+      "to": "esp32:GND.10"
+    },
+    {
+      "from": "lcd-display:VDD",
+      "to": "esp32:5V"
+    },
+    {
+      "from": "lcd-display:SDA",
+      "to": "esp32:GPIO21"
+    },
+    {
+      "from": "lcd-display:SCL",
+      "to": "esp32:GPIO22"
+    },
+    {
+      "from": "auto-mode-switch:2",
+      "to": "esp32:GPIO33"
+    },
+    {
+      "from": "auto-mode-switch:3",
+      "to": "esp32:GND.11"
+    },
+    {
+      "from": "alert-buzzer:2",
+      "to": "esp32:GND.12"
+    },
+    {
+      "from": "alert-buzzer:1",
+      "to": "esp32:GPIO13"
+    }
+  ],
+  "import": {
+    "ph-sensor": "ph-sensor.js"
+  }
+}

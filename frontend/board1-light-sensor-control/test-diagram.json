@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "author": "Smart Garden IoT System",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": -300,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-breadboard",
+      "id": "bb1",
+      "top": 240,
+      "left": -350,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "ldr1",
+      "top": 50,
+      "left": 100,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": 150,
+      "left": 350,
+      "attrs": { "color": "red" }
+    },
+    {
+      "type": "wokwi-relay-module",
+      "id": "relay1",
+      "top": 50,
+      "left": 200,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo1",
+      "top": -50,
+      "left": 100,
+      "attrs": { "label": "Roof Servo" }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo2",
+      "top": 100,
+      "left": 100,
+      "attrs": { "label": "Water Valve Servo" }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot1",
+      "top": 200,
+      "left": 100,
+      "attrs": { "value": "2048" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn1",
+      "top": 200,
+      "left": 300,
+      "attrs": { "color": "green", "label": "Switch 1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn2",
+      "top": 200,
+      "left": 380,
+      "attrs": { "color": "blue", "label": "Switch 2" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn3",
+      "top": 200,
+      "left": 460,
+      "attrs": { "color": "orange", "label": "Switch 3" }
+    }
+  ],
+  "connections": [
+    ["esp:TX", "$serialMonitor:RX", "", []],
+    ["esp:RX", "$serialMonitor:TX", "", []],
+    
+    ["esp:3V3", "bb1:tp.1", "red", ["h0"]],
+    ["esp:GND.1", "bb1:tn.1", "black", ["h0"]],
+    ["esp:5V", "bb1:tp.5", "red", ["h0"]],
+    
+    ["ldr1:VCC", "bb1:tp.10", "red", ["h0"]],
+    ["ldr1:GND", "bb1:tn.12", "black", ["h0"]],
+    ["ldr1:AO", "bb1:35t.a", "yellow", ["h0"]],
+    ["esp:32", "bb1:35t.e", "yellow", ["h-67.05", "v259.2", "h9.6"]],
+    
+    ["led1: cathode", "bb1:tn.20", "black", ["h0"]],
+    ["led1: anode", "bb1:40t.a", "red", ["h0"]],
+    ["bb1:40t.e", "esp:2", "red", ["h-67.05", "v259.2", "h249.6"]],
+    
+    ["relay1:VCC", "bb1:tp.15", "red", ["h0"]],
+    ["relay1:GND", "bb1:tn.16", "black", ["h0"]],
+    ["relay1:IN", "bb1:45t.a", "orange", ["h0"]],
+    ["esp:4", "bb1:45t.e", "orange", ["h-86.4", "v259.2", "h144"]],
+    
+    ["servo1:VCC", "bb1:tp.20", "red", ["h0"]],
+    ["servo1:GND", "bb1:tn.21", "black", ["h0"]],
+    ["servo1:SIG", "esp:12", "purple", ["h-77.4", "v259.2", "h134.4"]],
+    
+    ["servo2:VCC", "bb1:tp.25", "red", ["h0"]],
+    ["servo2:GND", "bb1:tn.26", "black", ["h0"]],
+    ["servo2:SIG", "esp:13", "cyan", ["h-67.05", "v249.6", "h249.6"]],
+    
+    ["pot1:VCC", "bb1:tp.30", "red", ["h0"]],
+    ["pot1:GND", "bb1:tn.31", "black", ["h0"]],
+    ["pot1:VOUT", "bb1:50t.a", "green", ["h0"]],
+    ["esp:34", "bb1:50t.e", "green", ["h-86.4", "v249.6", "h201.6"]],
+    
+    ["btn1:left", "bb1:tn.35", "black", ["h0"]],
+    ["btn1:right", "bb1:55t.a", "red", ["h0"]],
+    ["esp:25", "bb1:55t.e", "red", ["h-96", "v249.6", "h153.6"]],
+    
+    ["btn2:left", "bb1:tn.40", "black", ["h0"]],
+    ["btn2:right", "bb1:60t.a", "blue", ["h0"]],
+    ["esp:26", "bb1:60t.e", "blue", ["h-96", "v249.6", "h153.6"]],
+    
+    ["btn3:left", "bb1:tn.45", "black", ["h0"]],
+    ["btn3:right", "bb1:65t.a", "orange", ["h0"]],
+    ["esp:27", "bb1:65t.e", "orange", ["h-96", "v249.6", "h153.6"]]
+  ],
+  "dependencies": {}
+}

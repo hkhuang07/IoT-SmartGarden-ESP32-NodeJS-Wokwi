@@ -1,0 +1,56 @@
+[{
+  "_id": {
+    "$oid": "692cca5de2602728842d7147"
+  },
+  "device_type": "unknown",
+  "created_at": {
+    "$date": "2025-11-30T22:51:09.295Z"
+  },
+  "last_update": {
+    "$date": "2025-12-01T10:46:38.085Z"
+  },
+  "online": false,
+  "status": "OFFLINE"
+},
+{
+  "_id": {
+    "$oid": "692ccb0ce2602728842d7148"
+  },
+  "device_type": "watermonitor",
+  "created_at": {
+    "$date": "2025-11-30T22:54:03.952Z"
+  },
+  "last_update": {
+    "$date": "2025-12-01T10:47:25.329Z"
+  },
+  "online": true,
+  "status": "offline"
+},
+{
+  "_id": {
+    "$oid": "692ccc1de2602728842d7149"
+  },
+  "device_type": "temp_hum_data",
+  "created_at": {
+    "$date": "2025-11-30T22:58:36.178Z"
+  },
+  "last_update": {
+    "$date": "2025-12-01T10:38:29.358Z"
+  },
+  "online": true,
+  "status": "ONLINE"
+},
+{
+  "_id": {
+    "$oid": "692d3ea5e2602728842d714b"
+  },
+  "device_type": "temp_control",
+  "created_at": {
+    "$date": "2025-12-01T07:07:16.259Z"
+  },
+  "last_update": {
+    "$date": "2025-12-01T07:07:16.259Z"
+  },
+  "online": true,
+  "status": "ONLINE"
+}]

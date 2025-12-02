@@ -1,0 +1,141 @@
+const { MongoClient } = require('mongodb');
+require('dotenv').config();
+
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://<username:password>@cluster0.17bgl.mongodb.net/?appName=Cluster0';
+const DB_NAME = process.env.DATABASE_NAME || 'iot_smartgarden';
+
+let client;
+let db;
+
+/**
+ * Connect to MongoDB Atlas
+ * @returns {Promise<Db>} MongoDB database instance
+ */
+async function connectToDatabase() {
+    try {
+        if (db && client) {
+            console.log('📡 MongoDB already connected');
+            return db;
+        }
+
+        client = new MongoClient(MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+        });
+
+        await client.connect();
+        db = client.db(DB_NAME);
+        
+        console.log('✅ Connected to MongoDB Atlas');
+        console.log(`📊 Database: ${DB_NAME}`);
+        
+        // Create collections if they don't exist
+        await createCollections();
+        
+        return db;
+    } catch (error) {
+        console.error('❌ MongoDB connection error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Create collections with proper indexes
+ */
+async function createCollections() {
+    try {
+        // Devices collection
+        const devicesCollection = db.collection('devices');
+        await devicesCollection.createIndex({ deviceId: 1 }, { unique: true });
+        await devicesCollection.createIndex({ lastSeen: 1 });
+        
+        // Sensor data collection
+        const sensorDataCollection = db.collection('sensor_data');
+        await sensorDataCollection.createIndex({ deviceId: 1, timestamp: -1 });
+        await sensorDataCollection.createIndex({ timestamp: -1 });
+        await sensorDataCollection.createIndex({ sensorType: 1 });
+        
+        // Commands collection
+        const commandsCollection = db.collection('commands');
+        await commandsCollection.createIndex({ deviceId: 1, timestamp: -1 });
+        await commandsCollection.createIndex({ commandId: 1 }, { unique: true });
+        await commandsCollection.createIndex({ status: 1 });
+        
+        // Alerts collection
+        const alertsCollection = db.collection('alerts');
+        await alertsCollection.createIndex({ deviceId: 1, timestamp: -1 });
+        await alertsCollection.createIndex({ alertType: 1 });
+        await alertsCollection.createIndex({ severity: 1 });
+        await alertsCollection.createIndex({ acknowledged: 1 });
+        
+        // System logs collection
+        const logsCollection = db.collection('system_logs');
+        await logsCollection.createIndex({ timestamp: -1 });
+        await logsCollection.createIndex({ level: 1 });
+        await logsCollection.createIndex({ source: 1 });
+        
+        console.log('✅ Database collections and indexes created');
+    } catch (error) {
+        console.error('❌ Error creating collections:', error);
+    }
+}
+
+/**
+ * Get database instance
+ * @returns {Db} MongoDB database instance
+ */
+function getDatabase() {
+    if (!db) {
+        throw new Error('Database not connected. Call connectToDatabase() first.');
+    }
+    return db;
+}
+
+/**
+ * Disconnect from MongoDB
+ */
+async function disconnectFromDatabase() {
+    try {
+        if (client) {
+            await client.close();
+            console.log('📡 MongoDB disconnected');
+        }
+    } catch (error) {
+        console.error('❌ Error disconnecting from MongoDB:', error);
+    }
+}
+
+/**
+ * Health check for database connection
+ * @returns {Promise<Object>} Health status
+ */
+async function getHealthStatus() {
+    try {
+        if (!db) {
+            return { status: 'disconnected', timestamp: new Date() };
+        }
+        
+        // Ping the database
+        await db.admin().ping();
+        
+        return {
+            status: 'connected',
+            database: DB_NAME,
+            timestamp: new Date(),
+            collections: await db.listCollections().toArray().then(cols => cols.length)
+        };
+    } catch (error) {
+        return {
+            status: 'error',
+            error: error.message,
+            timestamp: new Date()
+        };
+    }
+}
+
+module.exports = {
+    connectToDatabase,
+    getDatabase,
+    disconnectFromDatabase,
+    getHealthStatus
+};
