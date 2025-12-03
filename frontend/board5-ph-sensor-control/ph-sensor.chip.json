@@ -1,0 +1,40 @@
+{
+    "name": "ph-sensor",
+    "author": "Huynh Quoc Huy",
+    "version": "2.0",
+    "description": "pH Sensor with dual servo control for acid/alkaline dosing",
+    "pins": [
+        "VCC",
+        "GND",
+        "AO",
+        "DO"
+    ],
+    "controls": [
+        {
+            "name": "ph_value",
+            "type": "slider",
+            "label": "pH Value",
+            "min": 0,
+            "max": 14,
+            "default": 7,
+            "step": 0.1
+        }
+    ],
+    "ranges": {
+        "ph_acidic_min": 6.0,
+        "ph_optimal_min": 6.5,
+        "ph_optimal_max": 7.5,
+        "ph_alkaline_max": 8.0,
+        "adc_acid_min": 1200,
+        "adc_neutral": 2048,
+        "adc_alkaline_max": 2800
+    },
+    "features": [
+        "ADC conversion",
+        "pH calibration",
+        "Auto/Manual mode",
+        "Dual servo control",
+        "LCD display",
+        "MQTT communication"
+    ]
+}

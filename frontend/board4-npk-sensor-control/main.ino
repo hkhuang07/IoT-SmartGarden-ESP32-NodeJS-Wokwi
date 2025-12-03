@@ -10,73 +10,97 @@
 #include <ArduinoJson.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <ESP32Servo.h>
+#include <LiquidCrystal_I2C.h>
+#include <esp_task_wdt.h>
 
-// WiFi Configuration
+// ==================== WIFI CONFIGURATION ====================
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
 
-// MQTT Configuration
+// ==================== MQTT CONFIGURATION ====================
 const char* mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
 const char* CLIENT_ID = "ESP_BOARD4_NPK_01";
+
+// MQTT Topics
 const char* PUBLISH_TOPIC = "garden/sensor/npk";
 const char* SUBSCRIBE_TOPIC = "garden/control/npk_";
+const char* CONFIG_TOPIC = "garden/control/npk_config";
+const char* VALVE_CONTROL_TOPIC = "garden/control/water_valve";
+const char* CALIBRATION_TOPIC = "garden/control/npk_calibration";
+const char* STATUS_TOPIC = "garden/status/board4";
 
-// Hardware Configuration - Board 4
-#define N_PIN 34  // Nitrogen
-#define P_PIN 35  // Phosphorus
-#define K_PIN 32  // Potassium
-#define VALVE_SERVO_PIN 4
-#define BUTTON_PIN 25
-#define LED_PIN 2
-#define POTENTIOMETER_PIN 33
+// ==================== HARDWARE CONFIGURATION ====================
+// Board 4 - NPK Sensor + LCD + Servo Valve
+#define N_PIN 34     // Nitrogen analog input
+#define P_PIN 35     // Phosphorus analog input
+#define K_PIN 32     // Potassium analog input
+#define VALVE_SERVO_PIN 4    // Servo valve control
+#define BUTTON_PIN 25        // Manual control button
+#define LED_PIN 2            // Status LED
+#define POTENTIOMETER_PIN 33 // Calibration adjustment
 
-// LCD Configuration
-#include <LiquidCrystal_I2C.h>
-LiquidCrystal_I2C lcd(0x27, 20, 4); // 20x4 LCD
+// ==================== LCD CONFIGURATION ====================
+LiquidCrystal_I2C lcd(0x27, 20, 4); // 20x4 LCD with I2C
 
-// Servo Configuration
-#include <ESP32Servo.h>
+// ==================== SERVO CONFIGURATION ====================
 Servo valveServo;
+#define SERVO_MIN_ANGLE 0
+#define SERVO_MAX_ANGLE 180
+#define VALVE_OPEN_ANGLE 90
+#define VALVE_CLOSED_ANGLE 0
 
-// WatchDog Timer
-#include <esp_task_wdt.h>
-#define WDT_TIMEOUT 30
+// ==================== WATCHDOG TIMER CONFIGURATION ====================
+#define WDT_TIMEOUT 30  // 30 seconds timeout
 
-// Interrupt Variables
+// ==================== ADC CONFIGURATION ====================
+const int ADC_RESOLUTION = 4096;
+const float ADC_VOLTAGE = 3.3;
+
+// ==================== NPK CALIBRATION VALUES ====================
+float n_calibration = 0.015;
+float p_calibration = 0.012;
+float k_calibration = 0.016;
+
+// ==================== NPK THRESHOLDS ====================
+const float N_MIN = 10.0, N_MAX = 50.0;
+const float P_MIN = 5.0, P_MAX = 30.0;
+const float K_MIN = 8.0, K_MAX = 40.0;
+
+// ==================== TIMING CONFIGURATION ====================
+#define SENSOR_READ_INTERVAL 2500  // 25 seconds
+#define STATUS_REPORT_INTERVAL 30000  // 5 minutes
+
+// ==================== INTERRUPT VARIABLES ====================
 volatile bool buttonPressed = false;
 volatile bool calibrationMode = false;
 
-// MQTT Client
+// ==================== MQTT CLIENT ====================
 WiFiClient espClient;
 PubSubClient client(espClient);
 long lastMsg = 0;
-bool autoFertigation = true;
+unsigned long lastStatusReport = 0;
+unsigned long valveCloseTimer = 0;
+bool valveTimerActive = false;
 
-// Global Variables
+// ==================== CONTROL MODES ====================
+bool autoFertilization = true;
+
+// ==================== GLOBAL VARIABLES ====================
 float nitrogenValue = 0.0;
 float phosphorusValue = 0.0;
 float potassiumValue = 0.0;
 int currentValveAngle = 0;
 int lcdUpdateCounter = 0;
+String lastAction = "INIT";
 
-// Calibration Values
-const float N_CALIBRATION = 0.015;
-const float P_CALIBRATION = 0.012;
-const float K_CALIBRATION = 0.016;
-
-// NPK Thresholds
-const float N_MIN = 10.0, N_MAX = 50.0;
-const float P_MIN = 5.0, P_MAX = 30.0;
-const float K_MIN = 8.0, K_MAX = 40.0;
-
-// ADC Configuration
-const int ADC_RESOLUTION = 4096;
-const float ADC_VOLTAGE = 3.3;
-
+// ==================== INTERRUPT SERVICE ROUTINES ====================
 void IRAM_ATTR buttonISR() {
   buttonPressed = true;
 }
+
+// ==================== SETUP FUNCTIONS ====================
 
 void setup_wifi() {
   delay(10);
@@ -109,94 +133,104 @@ void setup_lcd() {
   lcd.print("Smart Garden v2.0");
   lcd.setCursor(0, 1);
   lcd.print("Board 4: NPK Sensor");
+  lcd.setCursor(0, 2);
+  lcd.print("NPK + LCD + Valve");
   delay(2000);
   
-  Serial.println("✅ LCD initialized");
+  Serial.println("✅ LCD initialized - 20x4 I2C");
 }
 
 void setup_servo() {
   valveServo.attach(VALVE_SERVO_PIN);
-  valveServo.write(0); // Đóng van ban đầu
-  currentValveAngle = 0;
+  controlValveServo(VALVE_CLOSED_ANGLE);
   
-  Serial.println("✅ Servo initialized");
+  Serial.println("✅ Servo valve initialized - GPIO" + String(VALVE_SERVO_PIN));
 }
 
 void setup_adc() {
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
   
-  Serial.println("✅ ADC initialized");
+  Serial.println("✅ ADC initialized - 12-bit resolution");
 }
 
 void setup_interrupts() {
+  // Button with INPUT_PULLUP - Logic đảo (nhấn = LOW)
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, FALLING);
   
-  Serial.println("✅ Interrupts initialized");
+  Serial.println("✅ Interrupts initialized - Button: GPIO" + String(BUTTON_PIN));
 }
+
+// ==================== MQTT CALLBACK ====================
 
 void callback(char* topic, byte* payload, unsigned int length) {
   String message = "";
-  for (int i = 0; i < length; i++) {
+  for (unsigned int i = 0; i < length; i++) {
     message += (char)payload[i];
   }
   
-  Serial.println("[MQTT] Nhận: " + String(topic) + " = " + message);
-  
   String topicStr = String(topic);
+  Serial.println("[MQTT] Nhận: " + topicStr + " = " + message);
   
-  if (topicStr == "garden/control/npk_config") {
+  // Configuration commands
+  if (topicStr == CONFIG_TOPIC) {
     DynamicJsonDocument doc(512);
     deserializeJson(doc, message);
     
     if (doc.containsKey("auto_fertilization")) {
-      autoFertigation = doc["auto_fertilization"];
-      Serial.println("[CONFIG] Tưới phân tự động: " + String(autoFertigation));
+      autoFertilization = doc["auto_fertilization"];
+      lastAction = "AUTO_MODE_" + String(autoFertilization ? "ON" : "OFF");
+      Serial.println("[CONFIG] Tưới phân tự động: " + String(autoFertilization));
     }
     
     if (doc.containsKey("n_calibration")) {
-      // Cập nhật hệ số hiệu chỉnh Nitrogen
-      Serial.println("[CONFIG] Hiệu chỉnh Nitrogen cập nhật");
+      n_calibration = doc["n_calibration"];
+      Serial.println("[CONFIG] Nitrogen calibration: " + String(n_calibration));
+      lastAction = "N_CALIBRATION_UPDATED";
     }
     
     if (doc.containsKey("p_calibration")) {
-      // Cập nhật hệ số hiệu chỉnh Phosphorus
-      Serial.println("[CONFIG] Hiệu chỉnh Phosphorus cập nhật");
+      p_calibration = doc["p_calibration"];
+      Serial.println("[CONFIG] Phosphorus calibration: " + String(p_calibration));
+      lastAction = "P_CALIBRATION_UPDATED";
     }
     
     if (doc.containsKey("k_calibration")) {
-      // Cập nhật hệ số hiệu chỉnh Potassium
-      Serial.println("[CONFIG] Hiệu chỉnh Potassium cập nhật");
+      k_calibration = doc["k_calibration"];
+      Serial.println("[CONFIG] Potassium calibration: " + String(k_calibration));
+      lastAction = "K_CALIBRATION_UPDATED";
     }
   }
   
-  if (topicStr == "garden/control/water_valve") {
+  // Valve control commands
+  else if (topicStr == VALVE_CONTROL_TOPIC) {
     if (message == "OPEN") {
-      controlValveServo(90);
+      controlValveServo(VALVE_OPEN_ANGLE);
       client.publish("garden/status/npk_valve", "OPEN");
+      lastAction = "VALVE_OPEN_MANUAL";
     } else if (message == "CLOSE") {
-      controlValveServo(0);
+      controlValveServo(VALVE_CLOSED_ANGLE);
       client.publish("garden/status/npk_valve", "CLOSED");
+      lastAction = "VALVE_CLOSE_MANUAL";
     } else if (message.toInt() > 0 && message.toInt() <= 180) {
       controlValveServo(message.toInt());
+      lastAction = "VALVE_POSITION_" + message;
     }
   }
   
-  if (topicStr == "garden/control/npk_calibration") {
+  // Calibration commands
+  else if (topicStr == CALIBRATION_TOPIC) {
     handleCalibrationCommand(message);
   }
 }
 
 void handleCalibrationCommand(String command) {
   if (command == "CALIBRATE_HIGH") {
-    // Hiệu chỉnh với dung dịch giàu dinh dưỡng
     calibrateNPK("HIGH");
   } else if (command == "CALIBRATE_MEDIUM") {
-    // Hiệu chỉnh với dung dịch trung bình
     calibrateNPK("MEDIUM");
   } else if (command == "CALIBRATE_LOW") {
-    // Hiệu chỉnh với dung dịch thấp dinh dưỡng
     calibrateNPK("LOW");
   } else if (command == "RESET_CALIBRATION") {
     resetCalibration();
@@ -211,12 +245,13 @@ void calibrateNPK(String level) {
   Serial.println("[CALIBRATION] " + level + " - N:" + String(n_raw) + 
                  " P:" + String(p_raw) + " K:" + String(k_raw));
   
-  // Lưu giá trị hiệu chỉnh
-  // Trong thực tế sẽ lưu vào EEPROM
+  // Store calibration values
+  // In real implementation, would save to EEPROM
   
   lcd.setCursor(0, 3);
   lcd.print("Calibrated: " + level);
   
+  lastAction = "CALIBRATION_" + level;
   delay(2000);
 }
 
@@ -226,6 +261,8 @@ void resetCalibration() {
   lcd.setCursor(0, 3);
   lcd.print("Calibration Reset");
   delay(2000);
+  
+  lastAction = "CALIBRATION_RESET";
 }
 
 void reconnect() {
@@ -233,26 +270,19 @@ void reconnect() {
     Serial.print("MQTT kết nối...");
     
     if (client.connect(CLIENT_ID)) {
-      Serial.println("✅ Đã kết nối!");
+      Serial.println("✅ MQTT kết nối thành công!");
       
+      // Subscribe to control topics
       client.subscribe(SUBSCRIBE_TOPIC);
-      client.subscribe("garden/control/npk_config");
-      client.subscribe("garden/control/water_valve");
-      client.subscribe("garden/control/npk_calibration");
+      client.subscribe(CONFIG_TOPIC);
+      client.subscribe(VALVE_CONTROL_TOPIC);
+      client.subscribe(CALIBRATION_TOPIC);
       
-      client.publish("garden/status/board4", "ONLINE");
+      // Send online status
+      client.publish("garden/status/board4", "{\"status\":\"ONLINE\",\"device\":\"BOARD4_NPK\"}");
       
-      DynamicJsonDocument infoDoc(512);
-      infoDoc["device_id"] = CLIENT_ID;
-      infoDoc["board"] = "BOARD4_NPK_CONTROL";
-      infoDoc["version"] = "2.0";
-      infoDoc["auto_fertilization"] = autoFertigation;
-      infoDoc["ip"] = WiFi.localIP().toString();
-      infoDoc["features"] = "npk_sensor,lcd,servo_valve,calibration,auto_fertilization";
-      
-      String infoStr;
-      serializeJson(infoDoc, infoStr);
-      client.publish("garden/system/device_info", infoStr.c_str());
+      // Send device info
+      sendDeviceInfo();
       
     } else {
       Serial.print("Thất bại, rc=");
@@ -263,71 +293,125 @@ void reconnect() {
   }
 }
 
+void sendDeviceInfo() {
+  DynamicJsonDocument infoDoc(512);
+  infoDoc["device_id"] = CLIENT_ID;
+  infoDoc["board"] = "BOARD4_NPK_CONTROL";
+  infoDoc["version"] = "2.0";
+  infoDoc["auto_fertilization"] = autoFertilization;
+  infoDoc["ip"] = WiFi.localIP().toString();
+  infoDoc["features"] = "npk_sensor,lcd,servo_valve,calibration,auto_fertilization,digital_analog";
+  
+  JsonArray sensors = infoDoc.createNestedArray("sensors");
+  sensors.add("NPK_triple_sensor");
+  sensors.add("potentiometer_calibration");
+  
+  JsonArray actuators = infoDoc.createNestedArray("actuators");
+  actuators.add("servo_valve");
+  actuators.add("lcd_display");
+  actuators.add("status_led");
+  
+  JsonArray interfaces = infoDoc.createNestedArray("interfaces");
+  interfaces.add("analog_digital");
+  interfaces.add("i2c_lcd");
+  interfaces.add("pwm_servo");
+  
+  String infoStr;
+  serializeJson(infoDoc, infoStr);
+  client.publish("garden/system/device_info", infoStr.c_str());
+  Serial.println("[INFO] Gửi thông tin thiết bị");
+}
+
+// ==================== SENSOR READING & AUTO CONTROL ====================
+
 void sendSensorData() {
-  // Đọc giá trị raw từ các cảm biến
+  // Read raw values from NPK sensors
   int n_raw = analogRead(N_PIN);
   int p_raw = analogRead(P_PIN);
   int k_raw = analogRead(K_PIN);
   
-  // Chuyển đổi sang ppm (parts per million)
-  nitrogenValue = (n_raw * ADC_VOLTAGE / ADC_RESOLUTION) / N_CALIBRATION;
-  phosphorusValue = (p_raw * ADC_VOLTAGE / ADC_RESOLUTION) / P_CALIBRATION;
-  potassiumValue = (k_raw * ADC_VOLTAGE / ADC_RESOLUTION) / K_CALIBRATION;
+  // Convert to ppm (parts per million)
+  nitrogenValue = (n_raw * ADC_VOLTAGE / ADC_RESOLUTION) / n_calibration;
+  phosphorusValue = (p_raw * ADC_VOLTAGE / ADC_RESOLUTION) / p_calibration;
+  potassiumValue = (k_raw * ADC_VOLTAGE / ADC_RESOLUTION) / k_calibration;
   
-  // Đọc giá trị từ potentiometer
+  // Read potentiometer value
   int potValue = analogRead(POTENTIOMETER_PIN);
   
-  // Tạo JSON data
-  DynamicJsonDocument doc(512);
-  doc["n_raw"] = n_raw;
-  doc["p_raw"] = p_raw;
-  doc["k_raw"] = k_raw;
-  doc["n_ppm"] = nitrogenValue;
-  doc["p_ppm"] = phosphorusValue;
-  doc["k_ppm"] = potassiumValue;
-  doc["potentiometer"] = potValue;
-  doc["auto_fertilization"] = autoFertigation;
-  doc["valve_angle"] = currentValveAngle;
+  // Create JSON data for MongoDB
+  DynamicJsonDocument doc(1024);
   doc["device_id"] = CLIENT_ID;
   doc["timestamp"] = millis();
-  doc["rssi"] = WiFi.RSSI();
-  doc["free_heap"] = ESP.getFreeHeap();
+  
+  // Raw sensor data
+  JsonObject raw_data = doc.createNestedObject("raw_data");
+  raw_data["n_raw"] = n_raw;
+  raw_data["p_raw"] = p_raw;
+  raw_data["k_raw"] = k_raw;
+  
+  // Processed values (ppm)
+  JsonObject npk_values = doc.createNestedObject("npk_values");
+  npk_values["nitrogen_ppm"] = nitrogenValue;
+  npk_values["phosphorus_ppm"] = phosphorusValue;
+  npk_values["potassium_ppm"] = potassiumValue;
+  
+  // System status
+  JsonObject system = doc.createNestedObject("system");
+  system["auto_fertilization"] = autoFertilization;
+  system["valve_angle"] = currentValveAngle;
+  system["potentiometer"] = potValue;
+  system["last_action"] = lastAction;
+  system["wifi_rssi"] = WiFi.RSSI();
+  system["free_heap"] = ESP.getFreeHeap();
+  
+  // Status assessment
+  JsonObject nutrient_status = doc.createNestedObject("nutrient_status");
+  nutrient_status["nitrogen"] = getNutrientStatus(nitrogenValue, N_MIN, N_MAX);
+  nutrient_status["phosphorus"] = getNutrientStatus(phosphorusValue, P_MIN, P_MAX);
+  nutrient_status["potassium"] = getNutrientStatus(potassiumValue, K_MIN, K_MAX);
   
   String payload;
   serializeJson(doc, payload);
   
+  // Publish to MQTT
   client.publish(PUBLISH_TOPIC, payload.c_str());
-  Serial.println("[SENSOR] Gửi: " + payload);
+  Serial.println("[SENSOR] NPK: N=" + String(nitrogenValue, 1) + "ppm, " +
+                 "P=" + String(phosphorusValue, 1) + "ppm, " +
+                 "K=" + String(potassiumValue, 1) + "ppm");
   
-  Serial.println("NPK - N:" + String(nitrogenValue, 1) + "ppm, " +
-                 "P:" + String(phosphorusValue, 1) + "ppm, " +
-                 "K:" + String(potassiumValue, 1) + "ppm");
-  
-  if (autoFertigation) {
+  // Auto fertilization control
+  if (autoFertilization) {
     handleAutoFertilization();
   }
   
-  // Cập nhật LCD
+  // Update LCD display
   updateLCD();
 }
 
+String getNutrientStatus(float value, float min_val, float max_val) {
+  if (value < min_val) return "LOW";
+  if (value > max_val) return "HIGH";
+  return "NORMAL";
+}
+
+// Logic điều khiển tưới phân tự động - Theo yêu cầu phân tích
 void handleAutoFertilization() {
   bool needsFertilization = false;
   String deficiency = "";
   
-  // Kiểm tra thiếu Nitrogen
+  // Check Nitrogen deficiency
   if (nitrogenValue < N_MIN) {
     needsFertilization = true;
     deficiency += "N ";
   }
   
-  // Kiểm tra thiếu Phosphorus
+  // Check Phosphorus deficiency
   if (phosphorusValue < P_MIN) {
     needsFertilization = true;
     deficiency += "P ";
   }
   
-  // Kiểm tra thiếu Potassium
+  // Check Potassium deficiency
   if (potassiumValue < K_MIN) {
     needsFertilization = true;
     deficiency += "K ";
@@ -336,37 +420,37 @@ void handleAutoFertilization() {
   if (needsFertilization) {
     Serial.println("[AUTO] Thiếu dinh dưỡng: " + deficiency + "- Bật tưới phân");
     
-    // Bật van nước để tưới phân
-    controlValveServo(90);
+    // Open valve for fertilization
+    controlValveServo(VALVE_OPEN_ANGLE);
     
-    // Gửi cảnh báo
+    // Send alert
     client.publish("garden/alerts/npk_deficiency", deficiency.c_str());
     
-    // Tự động tắt sau 30 giây
-    setTimeout([]() {
-      controlValveServo(0);
-      Serial.println("[AUTO] Tắt tưới phân");
-    }, 30000);
+    // Auto close after 30 seconds (using timer instead of setTimeout)
+    valveCloseTimer = millis() + 30000;  // 30 seconds
+    valveTimerActive = true;
+    
+    lastAction = "AUTO_FERTILIZATION_" + deficiency;
   }
 }
 
 void controlValveServo(int angle) {
-  angle = constrain(angle, 0, 180);
-  valveServo.write(angle);
-  currentValveAngle = angle;
-  Serial.println("[VALVE] Góc van: " + String(angle) + "°");
+  currentValveAngle = constrain(angle, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE);
+  valveServo.write(currentValveAngle);
+  Serial.println("[VALVE] Van nước: " + String(currentValveAngle) + "° (" + 
+                 (currentValveAngle > 45 ? "Mở" : "Đóng") + ")");
 }
 
 void updateLCD() {
   lcdUpdateCounter++;
-  if (lcdUpdateCounter % 5 == 0) { // Cập nhật mỗi 5 chu kỳ
+  if (lcdUpdateCounter % 5 == 0) { // Update every 5 cycles
     lcd.clear();
     
-    // Dòng 1: Tiêu đề
+    // Row 1: Title
     lcd.setCursor(0, 0);
     lcd.print("Smart Garden v2.0");
     
-    // Dòng 2: Nitrogen và Phosphorus
+    // Row 2: Nitrogen and Phosphorus
     lcd.setCursor(0, 1);
     lcd.print("N:");
     lcd.print(nitrogenValue, 0);
@@ -374,25 +458,25 @@ void updateLCD() {
     lcd.print(phosphorusValue, 0);
     lcd.print("ppm");
     
-    // Dòng 3: Potassium
+    // Row 3: Potassium and Status
     lcd.setCursor(0, 2);
     lcd.print("K:");
     lcd.print(potassiumValue, 0);
     lcd.print("ppm");
     
-    // Dòng 4: Trạng thái
+    // Row 4: Valve status and nutrient level
     lcd.setCursor(0, 3);
     lcd.print("Valve:");
     lcd.print(currentValveAngle > 0 ? "ON " : "OFF");
     
-    // Hiển thị trạng thái dinh dưỡng
+    // Show nutrient level
+    String overall_status = "NORMAL";
     if (nitrogenValue < N_MIN || phosphorusValue < P_MIN || potassiumValue < K_MIN) {
-      lcd.print(" LOW");
+      overall_status = "LOW";
     } else if (nitrogenValue > N_MAX || phosphorusValue > P_MAX || potassiumValue > K_MAX) {
-      lcd.print(" HIGH");
-    } else {
-      lcd.print(" NORMAL");
+      overall_status = "HIGH";
     }
+    lcd.print(" " + overall_status);
   }
 }
 
@@ -401,18 +485,21 @@ void handleButton() {
     buttonPressed = false;
     
     // Toggle auto fertilization mode
-    autoFertigation = !autoFertigation;
+    autoFertilization = !autoFertilization;
     
-    Serial.println("[BUTTON] Chế độ tưới phân tự động: " + String(autoFertigation ? "ON" : "OFF"));
+    Serial.println("[BUTTON] Chế độ tưới phân tự động: " + String(autoFertilization ? "ON" : "OFF"));
     
-    digitalWrite(LED_PIN, autoFertigation ? HIGH : LOW);
+    // Flash LED indicator
+    digitalWrite(LED_PIN, autoFertilization ? HIGH : LOW);
     delay(200);
     digitalWrite(LED_PIN, LOW);
     
-    // Hiển thị thông báo trên LCD
+    // Show notification on LCD
     lcd.setCursor(0, 3);
-    lcd.print("Auto Mode: " + String(autoFertigation ? "ON " : "OFF"));
+    lcd.print("Auto Mode: " + String(autoFertilization ? "ON " : "OFF"));
     delay(1000);
+    
+    lastAction = "BUTTON_TOGGLE_AUTO_" + String(autoFertilization ? "ON" : "OFF");
   }
 }
 
@@ -420,29 +507,40 @@ void sendStatusReport() {
   DynamicJsonDocument statusDoc(512);
   statusDoc["device_id"] = CLIENT_ID;
   statusDoc["status"] = "ONLINE";
+  statusDoc["uptime_seconds"] = millis() / 1000;
+  
+  // Current nutrient levels
   statusDoc["nitrogen"] = nitrogenValue;
   statusDoc["phosphorus"] = phosphorusValue;
   statusDoc["potassium"] = potassiumValue;
-  statusDoc["auto_fertilization"] = autoFertigation;
+  
+  // System status
+  statusDoc["auto_fertilization"] = autoFertilization;
   statusDoc["valve_angle"] = currentValveAngle;
-  statusDoc["uptime"] = millis();
-  statusDoc["rssi"] = WiFi.RSSI();
+  statusDoc["last_action"] = lastAction;
+  statusDoc["wifi_rssi"] = WiFi.RSSI();
   statusDoc["free_heap"] = ESP.getFreeHeap();
   
+  // Fix ArduinoJson serialization - correct parameter order
   String statusStr;
-  serializeJson(statusStr, statusStr);
-  client.publish("garden/status/board4", statusStr.c_str());
+  serializeJson(statusDoc, statusStr);
+  client.publish(STATUS_TOPIC, statusStr.c_str());
+  Serial.println("[STATUS] Gửi báo cáo trạng thái");
 }
+
+// ==================== SETUP ====================
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
   
-  Serial.println("=== Smart Garden - Board 4: NPK Nutrient Control ===");
-  Serial.println("Client ID: " + String(CLIENT_ID));
-  Serial.println("Features: NPK Sensor, LCD Display, Auto Fertilization, Servo Valve");
+  Serial.println("=== Smart Garden - Board 4: NPK Nutrient Control System ===");
+  Serial.println("🔬 Chức năng: Cảm biến NPK + LCD + Servo Valve + Auto Fertilization");
+  Serial.println("🔧 Công nghệ: Digital Analog, I2C LCD, PWM Servo");
+  Serial.println("🌐 Môi trường: Wokwi simulation");
+  Serial.println();
   
-  // Initialize hardware
+  // Initialize hardware subsystems
   setup_lcd();
   setup_servo();
   setup_adc();
@@ -455,46 +553,73 @@ void setup() {
   pinMode(K_PIN, INPUT);
   pinMode(POTENTIOMETER_PIN, INPUT);
   
+  // Initialize LED
   digitalWrite(LED_PIN, LOW);
   
-  // WatchDog Timer
-  esp_task_wdt_init(WDT_TIMEOUT, true);
+  // WatchDog Timer Setup - Fixed for ESP32 SDK
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = WDT_TIMEOUT * 1000,
+    .idle_core_mask = 0,
+    .trigger_panic = true
+  };
+  esp_task_wdt_init(&wdt_config);
   esp_task_wdt_add(NULL);
+  Serial.println("✅ WatchDog Timer initialized (" + String(WDT_TIMEOUT) + "s)");
   
-  // Kết nối WiFi và MQTT
+  Serial.println("✅ Hardware initialization complete");
+  Serial.println();
+  
+  // Network connections
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
   
-  Serial.println("✅ Board 4 sẵn sàng hoạt động!");
+  Serial.println();
+  Serial.println("🌱 Smart Garden Board 4 NPK Control Ready!");
+  Serial.println("📡 MQTT: " + String(mqtt_server) + ":" + String(mqtt_port));
+  Serial.println("🏠 Client ID: " + String(CLIENT_ID));
+  Serial.println("📊 Publish: " + String(PUBLISH_TOPIC));
+  Serial.println("🎛️ Auto Fertilization: " + String(autoFertilization ? "ON" : "OFF"));
 }
+
+// ==================== MAIN LOOP ====================
 
 void loop() {
   // WatchDog reset
   esp_task_wdt_reset();
   
+  // Handle valve timer (replacement for setTimeout)
+  if (valveTimerActive && millis() >= valveCloseTimer) {
+    controlValveServo(VALVE_CLOSED_ANGLE);
+    valveTimerActive = false;
+    lastAction = "VALVE_AUTO_CLOSE";
+    Serial.println("[AUTO] Tắt tưới phân tự động");
+  }
+  
+  // MQTT connection management
   if (!client.connected()) {
     reconnect();
   }
   client.loop();
   
+  // Timing variables
   long now = millis();
   
-  // Gửi dữ liệu cảm biến định kỳ
-  if (now - lastMsg > 25000) {
+  // Send sensor data periodically (25 seconds)
+  if (now - lastMsg > SENSOR_READ_INTERVAL) {
     lastMsg = now;
     sendSensorData();
-  }
+  } 
   
-  // Xử lý button
+  // Handle manual button
   handleButton();
   
-  // Báo cáo trạng thái mỗi 5 phút
-  static unsigned long lastStatusReport = 0;
-  if (now - lastStatusReport > 300000) {
+  // Send status report every 5 minutes
+  if (now - lastStatusReport > STATUS_REPORT_INTERVAL) {
     lastStatusReport = now;
     sendStatusReport();
   }
   
+  // Small delay for system stability
   delay(100);
 }

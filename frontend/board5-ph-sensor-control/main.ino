@@ -1,5 +1,5 @@
 /*
- * Smart Garden - Board 7: pH Sensor Control (ESP32)
+ * Smart Garden - Board 5: pH Sensor Control (ESP32)
  * Chức năng: Đo độ pH, tự động điều chỉnh bằng acid/alkaline dosing
  * Áp dụng: C++, I2C/SPI, Digital Analog, Servo, pH Control
  * Môi trường: Wokwi simulation
@@ -11,6 +11,8 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <LiquidCrystal_I2C.h>
+#include <ESP32Servo.h>
+#include <esp_task_wdt.h>
 
 // WiFi Configuration
 const char* ssid = "Wokwi-GUEST";
@@ -19,11 +21,11 @@ const char* password = "";
 // MQTT Configuration
 const char* mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
-const char* CLIENT_ID = "ESP_BOARD7_PH_01";
+const char* CLIENT_ID = "ESP_BOARD5_PH_01";
 const char* PUBLISH_TOPIC = "garden/sensor/ph";
 const char* SUBSCRIBE_TOPIC = "garden/control/ph_";
 
-// Hardware Configuration - Board 7
+// Hardware Configuration - Board 5
 #define PH_PIN_ANALOG 34
 #define PH_PIN_DIGITAL 35
 #define ACID_DOSING_SERVO_PIN 4
@@ -40,17 +42,19 @@ const char* SUBSCRIBE_TOPIC = "garden/control/ph_";
 // I2C/SPI Configuration
 #define I2C_SDA_PIN 21
 #define I2C_SCL_PIN 22
+#define SPI_MOSI_PIN 23
+#define SPI_MISO_PIN 19
+#define SPI_SCK_PIN 18
+#define SPI_CS_PIN 15
 
 // Servo Configuration
-#include <ESP32Servo.h>
 Servo acidDosingServo;
 Servo alkalineDosingServo;
 
 // LCD Configuration
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-// WatchDog Timer
-#include <esp_task_wdt.h>
+// WatchDog Timer Configuration
 #define WDT_TIMEOUT 30
 
 // Global Variables
@@ -96,30 +100,51 @@ bool acidDosingActive = false;
 bool alkalineDosingActive = false;
 unsigned long dosingStartTime = 0;
 
+// Timer Variables for replacing any potential setTimeout usage
+unsigned long dosingTimer = 0;
+bool dosingTimerActive = false;
+
 // Setup WiFi
 void setupWiFi() {
   delay(10);
   Serial.println();
-  Serial.print("Connecting to WiFi: ");
+  Serial.print("WiFi kết nối: ");
   Serial.println(ssid);
 
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 60) {
     delay(500);
     Serial.print(".");
-    
-    // Blink status LED while connecting
-    digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
+    attempts++;
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected!");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
+    Serial.println("✅ WiFi kết nối thành công!");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+    
+    // Turn on status LED when connected
+    digitalWrite(STATUS_LED_PIN, HIGH);
+  } else {
+    Serial.println();
+    Serial.println("❌ WiFi kết nối thất bại");
+  }
+}
+
+// Setup I2C/SPI
+void setupI2CSPI() {
+  // I2C Setup
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   
-  // Turn on status LED when connected
-  digitalWrite(STATUS_LED_PIN, HIGH);
+  // SPI Setup
+  SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, SPI_CS_PIN);
+  pinMode(SPI_CS_PIN, OUTPUT);
+  digitalWrite(SPI_CS_PIN, HIGH);
+  
+  Serial.println("✅ I2C/SPI initialized");
 }
 
 // Setup MQTT
@@ -130,24 +155,39 @@ void setupMQTT() {
 
 void reconnectMQTT() {
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
+    Serial.print("MQTT kết nối...");
     
     if (client.connect(clientId.c_str())) {
-      Serial.println("connected");
+      Serial.println("✅ Đã kết nối!");
       
       // Subscribe to control topics
       client.subscribe(SUBSCRIBE_TOPIC);
       client.subscribe("garden/control/all");
+      client.subscribe("garden/control/ph_config");
+      client.subscribe("garden/control/ph_manual");
       
       // Publish connection message
-      client.publish("garden/status", (clientId + " connected").c_str(), true);
+      //client.publish("garden/status/board5", "ONLINE");
+      client.publish("garden/status/board5", "{\"status\":\"ONLINE\",\"device\":\"BOARD5_PH\"}");
+
       
-      digitalWrite(STATUS_LED_PIN, HIGH);
+      DynamicJsonDocument infoDoc(512);
+      infoDoc["device_id"] = CLIENT_ID;
+      infoDoc["board"] = "BOARD5_PH_CONTROL";
+      infoDoc["version"] = "2.0";
+      infoDoc["auto_mode"] = autoMode;
+      infoDoc["ip"] = WiFi.localIP().toString();
+      infoDoc["features"] = "ph_sensor,dual_servo_control,lcd_display,calibration,auto_manual_mode,led_indicators";
+      
+      String infoStr;
+      serializeJson(infoDoc, infoStr);
+      client.publish("garden/system/device_info", infoStr.c_str());
+      
     } else {
-      Serial.print("failed, rc=");
+      Serial.print("Thất bại, rc=");
       Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
-      delay(5000);
+      Serial.println(" Thử lại sau 3 giây");
+      delay(3000);
     }
   }
 }
@@ -159,28 +199,34 @@ void callback(char* topic, byte* payload, unsigned int length) {
     message += (char)payload[i];
   }
 
-  Serial.println("Message received: [" + String(topic) + "] " + message);
+  Serial.println("[MQTT] Nhận: " + String(topic) + " = " + message);
 
-  if (String(topic).equals(SUBSCRIBE_TOPIC)) {
-    DynamicJsonDocument doc(1024);
+  String topicStr = String(topic);
+  
+  if (topicStr == "garden/control/ph_config") {
+    DynamicJsonDocument doc(512);
     deserializeJson(doc, message);
     
-    if (doc.containsKey("action")) {
-      String action = doc["action"];
-      
-      if (action.equals("auto_mode")) {
-        autoMode = doc["enabled"];
-        Serial.println("Auto mode: " + String(autoMode ? "ON" : "OFF"));
-      } else if (action.equals("calibrate")) {
-        calibratePH();
-      } else if (action.equals("manual_dosing")) {
-        String type = doc["type"];
-        int duration = doc["duration"];
-        performManualDosing(type, duration);
-      } else if (action.equals("set_threshold")) {
-        phThreshold = doc["threshold"];
-        Serial.println("pH threshold set to: " + String(phThreshold));
-      }
+    if (doc.containsKey("auto_mode")) {
+      autoMode = doc["auto_mode"];
+      Serial.println("[CONFIG] Chế độ tự động: " + String(autoMode ? "ON" : "OFF"));
+    }
+    
+    if (doc.containsKey("ph_threshold")) {
+      phThreshold = doc["ph_threshold"];
+      Serial.println("[CONFIG] Ngưỡng pH: " + String(phThreshold));
+    }
+  }
+  
+  if (topicStr == "garden/control/ph_manual") {
+    if (message == "CALIBRATE") {
+      calibratePH();
+    } else if (message == "START_ACID") {
+      startAcidDosing();
+    } else if (message == "START_ALKALINE") {
+      startAlkalineDosing();
+    } else if (message == "STOP_ALL") {
+      stopAllDosing();
     }
   }
 }
@@ -265,7 +311,7 @@ void performPHControl() {
 
 // Start acid dosing
 void startAcidDosing() {
-  Serial.println("Starting ACID dosing...");
+  Serial.println("[ACID] Bắt đầu dosing acid...");
   acidDosingActive = true;
   dosingStartTime = millis();
   lastControlAction = millis();
@@ -284,12 +330,16 @@ void startAcidDosing() {
   delay(500);
   digitalWrite(ALERT_BUZZER_PIN, LOW);
   
+  // Use timer system instead of potential setTimeout
+  dosingTimer = millis() + DOSING_DURATION;
+  dosingTimerActive = true;
+  
   client.publish("garden/log", "pH control: Starting acid dosing", false);
 }
 
 // Start alkaline dosing
 void startAlkalineDosing() {
-  Serial.println("Starting ALKALINE dosing...");
+  Serial.println("[ALKALINE] Bắt đầu dosing alkaline...");
   alkalineDosingActive = true;
   dosingStartTime = millis();
   lastControlAction = millis();
@@ -308,13 +358,17 @@ void startAlkalineDosing() {
   delay(500);
   digitalWrite(ALERT_BUZZER_PIN, LOW);
   
+  // Use timer system instead of potential setTimeout
+  dosingTimer = millis() + DOSING_DURATION;
+  dosingTimerActive = true;
+  
   client.publish("garden/log", "pH control: Starting alkaline dosing", false);
 }
 
 // Stop all dosing
 void stopAllDosing() {
   if (acidDosingActive || alkalineDosingActive) {
-    Serial.println("Stopping all dosing...");
+    Serial.println("[STOP] Dừng tất cả dosing...");
     
     // Return servos to neutral
     acidDosingServo.write(SERVO_NEUTRAL_POSITION);
@@ -333,18 +387,16 @@ void stopAllDosing() {
     
     acidDosingActive = false;
     alkalineDosingActive = false;
+    dosingTimerActive = false;
     
     client.publish("garden/log", "pH control: Stopped dosing", false);
   }
 }
 
-// Check dosing timeout
+// Check dosing timeout (replacement for setTimeout)
 void checkDosingTimeout() {
-  if (acidDosingActive || alkalineDosingActive) {
-    unsigned long currentTime = millis();
-    if (currentTime - dosingStartTime > DOSING_DURATION) {
-      stopAllDosing();
-    }
+  if (dosingTimerActive && millis() >= dosingTimer) {
+    stopAllDosing();
   }
 }
 
@@ -368,7 +420,9 @@ void performManualDosing(String type, int duration) {
   digitalWrite(ACID_LED_PIN, LOW);
   digitalWrite(ALKALINE_LED_PIN, LOW);
   
-  client.publish("garden/log", "Manual dosing completed: " + type, false);
+  // Fixed MQTT publish - convert String to const char*
+  String logMsg = "Manual dosing completed: " + type;
+  client.publish("garden/log", logMsg.c_str(), false);
 }
 
 // Calibrate pH sensor
@@ -399,7 +453,10 @@ void calibratePH() {
   phCalibration = 7.0 - averagePH;
   
   Serial.println("Calibration completed. Offset: " + String(phCalibration));
-  client.publish("garden/log", "pH sensor calibrated. Offset: " + String(phCalibration), false);
+  
+  // Fixed MQTT publish - convert String to const char*
+  String calibMsg = "pH sensor calibrated. Offset: " + String(phCalibration);
+  client.publish("garden/log", calibMsg.c_str(), false);
   
   // Blink status LED to indicate calibration
   for (int i = 0; i < 5; i++) {
@@ -412,6 +469,11 @@ void calibratePH() {
 
 // Update LCD display
 void updateLCD() {
+  if (millis() - lastLCDUpdate < 500) {
+    return;
+  }
+  lastLCDUpdate = millis();
+  
   lcd.clear();
   
   // Line 1: pH value and status
@@ -462,11 +524,14 @@ void sendMQTTData() {
   doc["acid_dosing_active"] = acidDosingActive;
   doc["alkaline_dosing_active"] = alkalineDosingActive;
   doc["timestamp"] = millis();
+  doc["rssi"] = WiFi.RSSI();
+  doc["free_heap"] = ESP.getFreeHeap();
   
   String jsonString;
   serializeJson(doc, jsonString);
   
   client.publish(PUBLISH_TOPIC, jsonString.c_str());
+  Serial.println("[SENSOR] Gửi: " + jsonString);
 }
 
 // Get pH status string
@@ -481,10 +546,89 @@ String getPHStatusString() {
   }
 }
 
+// Send I2C/SPI data (M2M communication)
+void sendI2CSPIData() {
+  DynamicJsonDocument commDoc(256);
+  commDoc["board"] = CLIENT_ID;
+  commDoc["type"] = "ph_data";
+  commDoc["ph_value"] = currentPH;
+  commDoc["ph_status"] = getPHStatusString();
+  commDoc["auto_mode"] = autoMode;
+  commDoc["acid_dosing"] = acidDosingActive;
+  commDoc["alkaline_dosing"] = alkalineDosingActive;
+  commDoc["timestamp"] = millis();
+  
+  // I2C Communication
+  Wire.beginTransmission(9); // Địa chỉ thiết bị nhận
+  String jsonStr;
+  serializeJson(commDoc, jsonStr);
+  
+  // Chuyển String thành uint8_t array
+  uint8_t data[jsonStr.length() + 1];
+  jsonStr.getBytes(data, sizeof(data));
+  Wire.write(data, jsonStr.length());
+  Wire.endTransmission();
+  
+  // SPI Communication
+  digitalWrite(SPI_CS_PIN, LOW);
+  uint8_t spiData[jsonStr.length() + 1];
+  jsonStr.getBytes(spiData, sizeof(spiData));
+  SPI.transfer(spiData, jsonStr.length());
+  digitalWrite(SPI_CS_PIN, HIGH);
+  
+  Serial.println("[I2C/SPI] Đã gửi dữ liệu pH");
+}
+
+// Send status report
+void sendStatusReport() {
+  DynamicJsonDocument statusDoc(512);
+  statusDoc["device_id"] = CLIENT_ID;
+  statusDoc["status"] = "ONLINE";
+  statusDoc["ph_value"] = currentPH;
+  statusDoc["ph_status"] = getPHStatusString();
+  statusDoc["auto_mode"] = autoMode;
+  statusDoc["acid_dosing"] = acidDosingActive;
+  statusDoc["alkaline_dosing"] = alkalineDosingActive;
+  statusDoc["threshold"] = phThreshold;
+  statusDoc["calibration"] = phCalibration;
+  statusDoc["uptime"] = millis();
+  statusDoc["rssi"] = WiFi.RSSI();
+  statusDoc["free_heap"] = ESP.getFreeHeap();
+  
+  String statusStr;
+  serializeJson(statusDoc, statusStr);
+  //client.publish("garden/status/board5", statusStr.c_str());
+  client.publish("garden/status/board5", "{\"status\":\"ONLINE\",\"device\":\"BOARD5_PH\"}");
+
+}
+
 // Setup function
 void setup() {
   Serial.begin(115200);
-  Serial.println("=== Smart Garden - Board 7: pH Sensor Control ===");
+  delay(1000);
+  
+  Serial.println("=== Smart Garden - Board 5: pH Sensor Control ===");
+  Serial.println("Client ID: " + String(CLIENT_ID));
+  Serial.println("Features: pH Sensor, Dual Servo Control, Auto/Manual Mode, LCD Display, Calibration");
+  
+  // Initialize hardware
+  setupI2CSPI();
+  
+  // Initialize LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Smart Garden Board5");
+  lcd.setCursor(0, 1);
+  lcd.print("pH Control System");
+  delay(2000);
+  
+  // Initialize servos
+  acidDosingServo.attach(ACID_DOSING_SERVO_PIN);
+  alkalineDosingServo.attach(ALKALINE_DOSING_SERVO_PIN);
+  acidDosingServo.write(SERVO_NEUTRAL_POSITION);
+  alkalineDosingServo.write(SERVO_NEUTRAL_POSITION);
   
   // Initialize hardware pins
   pinMode(STATUS_LED_PIN, OUTPUT);
@@ -495,31 +639,25 @@ void setup() {
   pinMode(AUTO_MODE_SWITCH_PIN, INPUT_PULLUP);
   pinMode(ALERT_BUZZER_PIN, OUTPUT);
   
-  // Initialize servos
-  acidDosingServo.attach(ACID_DOSING_SERVO_PIN);
-  alkalineDosingServo.attach(ALKALINE_DOSING_SERVO_PIN);
-  acidDosingServo.write(SERVO_NEUTRAL_POSITION);
-  alkalineDosingServo.write(SERVO_NEUTRAL_POSITION);
+  digitalWrite(STATUS_LED_PIN, LOW);
+  digitalWrite(ACID_LED_PIN, LOW);
+  digitalWrite(ALKALINE_LED_PIN, LOW);
+  digitalWrite(OPTIMAL_LED_PIN, LOW);
   
-  // Initialize LCD
-  lcd.init();
-  lcd.backlight();
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Smart Garden");
-  lcd.setCursor(0, 1);
-  lcd.print("pH Control v1.0");
-  delay(2000);
+  // WatchDog Timer - sửa lỗi ESP-IDF v5.x
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = WDT_TIMEOUT * 1000,
+    .idle_core_mask = 0,
+    .trigger_panic = true
+  };
+  esp_task_wdt_init(&wdt_config);
+  esp_task_wdt_add(NULL);
   
   // Setup WiFi and MQTT
   setupWiFi();
   setupMQTT();
   
-  // Initialize WatchDog
-  esp_task_wdt_init(WDT_TIMEOUT, true);
-  esp_task_wdt_add(NULL);
-  
-  Serial.println("Setup completed. Starting main loop...");
+  Serial.println("✅ Board 5 sẵn sàng hoạt động!");
   
   // Initial readings
   readPHSensor();
@@ -528,7 +666,7 @@ void setup() {
 
 // Main loop
 void loop() {
-  // Feed WatchDog
+  // WatchDog reset
   esp_task_wdt_reset();
   
   // Reconnect MQTT if needed
@@ -551,16 +689,13 @@ void loop() {
   // Check dosing timeout
   checkDosingTimeout();
   
-  // Update LCD every 500ms
-  if (currentTime - lastLCDUpdate > 500) {
-    updateLCD();
-    lastLCDUpdate = currentTime;
-  }
+  // Update LCD
+  updateLCD();
   
   // Send MQTT data every 5 seconds
   if (currentTime - lastMQTTUpdate > 5000) {
-    sendMQTTData();
     lastMQTTUpdate = currentTime;
+    sendMQTTData();
   }
   
   // Handle calibration button
@@ -571,12 +706,19 @@ void loop() {
     }
   }
   
+  // Send I2C/SPI data every 45 seconds
+  static unsigned long lastCommTime = 0;
+  if (currentTime - lastCommTime > 45000) {
+    lastCommTime = currentTime;
+    sendI2CSPIData();
+  }
+  
+  // Send status report every 5 minutes
+  static unsigned long lastStatusReport = 0;
+  if (currentTime - lastStatusReport > 300000) {
+    lastStatusReport = currentTime;
+    sendStatusReport();
+  }
+  
   delay(100);
-}
-
-// Interrupt Service Routine (optional - for emergency stop)
-void IRAM_ATTR emergencyStop() {
-  stopAllDosing();
-  acidDosingActive = false;
-  alkalineDosingActive = false;
 }

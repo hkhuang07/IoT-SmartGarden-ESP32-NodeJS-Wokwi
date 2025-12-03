@@ -18,6 +18,8 @@
 #include <SPI.h>
 #include <ESP32Servo.h>
 #include <esp_task_wdt.h>
+#include "driver/ledc.h"  // ESP32 LEDC PWM driver
+#include "esp_timer.h"     // ESP32 timer functions
 
 // ==================== WIFI CONFIGURATION ====================
 const char* ssid = "Wokwi-GUEST";
@@ -55,6 +57,12 @@ const char* CONFIG_TOPIC = "garden/system/device_info"; // Thông tin thiết b�
 #define PWM_RESOLUTION 8              // 8-bit resolution (0-255)
 #define LED_MIN_BRIGHTNESS 0
 #define LED_MAX_BRIGHTNESS 255
+
+// LEDC Constants for ESP32
+#define LEDC_SPEED_MODE LEDC_HIGH_SPEED_MODE
+#define LEDC_TIMER_0 LEDC_TIMER_0
+#define LEDC_TIMER_8_BIT LEDC_TIMER_8_BIT
+#define LEDC_CHANNEL_0 LEDC_CHANNEL_0
 
 // ==================== SERVO CONFIGURATION ====================
 Servo roofServo;                     // Servo mái che (0-180°)
@@ -108,6 +116,17 @@ bool autoLightControl = true;        // Điều khiển đèn tự động
 bool autoRoofControl = true;         // Điều khiển mái che tự động  
 bool autoValveControl = true;        // Điều khiển van nước tự động
 
+// ==================== TIMER VARIABLES ====================
+// Thay thế setTimeout bằng simple timer flags
+unsigned long valveCloseTimer = 0;
+bool valveTimerActive = false;
+const unsigned long VALVE_CLOSE_DELAY = 30000;  // 30 giây
+
+// ==================== AUTO CONTROL FLAGS ====================
+// Flags cho auto valve control
+unsigned long lastWaterTime = 0;
+bool wateredRecently = false;
+
 // ==================== CURRENT STATES ====================
 int currentLEDValue = 0;             // Giá trị PWM hiện tại (0-255)
 int currentRoofAngle = 0;            // Góc mái che hiện tại (0-180)
@@ -125,7 +144,8 @@ void IRAM_ATTR switch3ISR() { switch3Pressed = true; }
 // Điều khiển đèn LED PWM theo ánh sáng
 void controlLEDPWM(int brightness) {
   currentLEDValue = constrain(brightness, LED_MIN_BRIGHTNESS, LED_MAX_BRIGHTNESS);
-  ledcWrite(PWM_CHANNEL_LED, currentLEDValue);
+  ledc_set_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_0, currentLEDValue);
+  ledc_update_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_0);
   Serial.println("[LED] Độ sáng PWM: " + String(currentLEDValue) + "/255");
 }
 
@@ -193,9 +213,25 @@ void setup_i2c_spi() {
 }
 
 void setup_pwm() {
-  // PWM Setup cho đèn LED chiếu sáng
-  ledcSetup(PWM_CHANNEL_LED, PWM_FREQUENCY, PWM_RESOLUTION);
-  ledcAttachPin(LED_PIN, PWM_CHANNEL_LED);
+  // PWM Setup cho đèn LED chiếu sáng - Fixed struct field order
+  ledc_timer_config_t ledc_timer = {
+    .speed_mode = LEDC_SPEED_MODE,
+    .duty_resolution = LEDC_TIMER_8_BIT,
+    .timer_num = LEDC_TIMER_0,
+    .freq_hz = PWM_FREQUENCY,
+    .clk_cfg = LEDC_AUTO_CLK
+  };
+  ledc_timer_config(&ledc_timer);
+  
+  ledc_channel_config_t ledc_channel = {
+    .gpio_num = LED_PIN,
+    .speed_mode = LEDC_SPEED_MODE,
+    .channel = LEDC_CHANNEL_0,
+    .timer_sel = LEDC_TIMER_0,
+    .duty = 0,
+    .hpoint = 0
+  };
+  ledc_channel_config(&ledc_channel);
   
   // Khởi tạo đèn ở trạng thái tắt
   controlLEDPWM(0);
@@ -483,9 +519,6 @@ void handleAutoValveControl(int lightValue) {
   if (!autoValveControl) return;
   
   // Logic đơn giản: Khi ánh sáng đủ cao và đã qua 1 tiếng từ lần tưới cuối
-  static unsigned long lastWaterTime = 0;
-  static bool wateredRecently = false;
-  
   String action = "";
   
   if (lightValue > LIGHT_OPTIMAL && !wateredRecently && 
@@ -497,14 +530,11 @@ void handleAutoValveControl(int lightValue) {
     action = "SCHEDULED_WATERING";
     
     // Tự động đóng van sau 30 giây
-    setTimeout([]() {
-      controlValveServo(VALVE_CLOSED_ANGLE);
-      wateredRecently = false;
-      Serial.println("[AUTO-VALVE] Đã tưới xong, đóng van");
-    }, 30000);
+    valveCloseTimer = millis() + VALVE_CLOSE_DELAY;
+    valveTimerActive = true;
   }
   
-  if (action != "") {
+  if (action != "") { 
     lastAction = action;
     Serial.println("[AUTO-VALVE] " + action);
   }
@@ -589,17 +619,19 @@ void sendStatusReport() {
   statusDoc["status"] = "ONLINE";
   statusDoc["uptime_seconds"] = millis() / 1000;
   statusDoc["current_light"] = analogRead(LDR_PIN);
-  statusDoc["auto_modes"] = {
-    {"light", autoLightControl},
-    {"roof", autoRoofControl}, 
-    {"valve", autoValveControl}
-  };
-  statusDoc["controls"] = {
-    {"led_pwm", currentLEDValue},
-    {"relay_light", relayLightState},
-    {"roof_angle", currentRoofAngle},
-    {"valve_angle", currentValveAngle}
-  };
+  
+  // Tạo nested objects thay vì inline object creation
+  JsonObject autoModes = statusDoc.createNestedObject("auto_modes");
+  autoModes["light"] = autoLightControl;
+  autoModes["roof"] = autoRoofControl;
+  autoModes["valve"] = autoValveControl;
+  
+  JsonObject controls = statusDoc.createNestedObject("controls");
+  controls["led_pwm"] = currentLEDValue;
+  controls["relay_light"] = relayLightState;
+  controls["roof_angle"] = currentRoofAngle;
+  controls["valve_angle"] = currentValveAngle;
+  
   statusDoc["last_action"] = lastAction;
   
   String statusStr;
@@ -647,15 +679,14 @@ void setup() {
   Serial.println("🌐 Môi trường: Wokwi simulation");
   Serial.println();
   
-  // WatchDog Timer Setup
+  // WatchDog Timer Setup - Fixed for ESP32 SDK
   esp_task_wdt_config_t wdt_config = {
     .timeout_ms = WDT_TIMEOUT * 1000,
-    .idle_options = {
-      .trigger_idle = true,
-    }
+    .idle_core_mask = 0,
+    .trigger_panic = true
   };
-  esp_task_wdt_init(&wdt_config); 
-  esp_task_wdt_add(NULL); 
+  esp_task_wdt_init(&wdt_config);
+  esp_task_wdt_add(NULL);
   Serial.println("✅ WatchDog Timer initialized (" + String(WDT_TIMEOUT) + "s)");
   
   // Initialize hardware subsystems
@@ -695,6 +726,14 @@ void setup() {
 void loop() {
   // WatchDog reset
   esp_task_wdt_reset();
+  
+  // Handle valve timer
+  if (valveTimerActive && millis() >= valveCloseTimer) {
+    controlValveServo(VALVE_CLOSED_ANGLE);
+    valveTimerActive = false;
+    wateredRecently = false;  // Reset flag sau khi tưới xong
+    Serial.println("[AUTO-VALVE] Đã tưới xong, đóng van");
+  }
   
   // MQTT connection management
   if (!client.connected()) {

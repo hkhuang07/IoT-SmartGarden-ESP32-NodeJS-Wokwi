@@ -1,0 +1,41 @@
+{
+  "name": "npk-sensor",
+  "author": "Huynh Quoc Huy",
+  "version": "2.1-stable",
+  "pins": [
+    "VCC",
+    "GND",
+    "AO_N",
+    "BO_P",
+    "CO_K"
+  ],
+  "controls": [
+    {
+      "name": "nitrogen_value",
+      "type": "slider",
+      "label": "Nitrogen (N) ADC",
+      "min": 1000,
+      "max": 3000,
+      "default": 2000,
+      "step": 10
+    },
+    {
+      "name": "phosphorus_value",
+      "type": "slider",
+      "label": "Phosphorus (P) ADC",
+      "min": 500,
+      "max": 2500,
+      "default": 1500,
+      "step": 10
+    },
+    {
+      "name": "potassium_value",
+      "type": "slider",
+      "label": "Potassium (K) ADC",
+      "min": 500,
+      "max": 2500,
+      "default": 1000,
+      "step": 10
+    }
+  ]
+}

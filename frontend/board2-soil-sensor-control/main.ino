@@ -10,6 +10,9 @@
 #include <ArduinoJson.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <ESP32Servo.h>
+#include <esp_task_wdt.h>
+#include <LiquidCrystal_I2C.h>
 
 // WiFi Configuration
 const char* ssid = "Wokwi-GUEST";
@@ -41,11 +44,12 @@ const char* SUBSCRIBE_TOPIC = "garden/control/soil_";
 #define SPI_CS_PIN 15
 
 // Servo Configuration
-#include <ESP32Servo.h>
 Servo valveServo;
 
-// WatchDog Timer
-#include <esp_task_wdt.h>
+// LCD Configuration
+LiquidCrystal_I2C lcd(0x27, 20, 4); // I2C address 0x27, 20x4 display
+
+// WatchDog Timer Configuration
 #define WDT_TIMEOUT 30
 
 // Interrupt Variables
@@ -71,10 +75,22 @@ const int MOISTURE_HIGH_THRESHOLD = 2500;
 const int PUBLISH_INTERVAL = 15000;
 const int WATERING_DURATION = 5000;
 const int CHECK_INTERVAL = 30000;
+const int VALVE_OPEN_ANGLE = 90;
+const int VALVE_CLOSED_ANGLE = 0;
 
 // Calibration values
 int drySoilValue = 3000;  // Giá trị độ ẩm đất khô
 int wetSoilValue = 1000;  // Giá trị độ ẩm đất ướt
+
+// Timer Variables for setTimeout replacement
+unsigned long valveCloseTimer = 0;
+bool valveTimerActive = false;
+unsigned long lastWatering = 0;
+bool isWatering = false;
+
+// LCD Update Timer
+unsigned long lastLCDUpdate = 0;
+const int LCD_UPDATE_INTERVAL = 1000;
 
 void IRAM_ATTR buttonISR() {
   buttonPressed = true;
@@ -115,10 +131,23 @@ void setup_i2c_spi() {
   Serial.println("✅ I2C/SPI initialized");
 }
 
+void setup_lcd() {
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Smart Garden Board2");
+  lcd.setCursor(0, 1);
+  lcd.print("Soil Moisture System");
+  delay(2000);
+  lcd.clear();
+  
+  Serial.println("✅ LCD initialized");
+}
+
 void setup_servo() {
   valveServo.attach(VALVE_SERVO_PIN);
-  valveServo.write(0); // Đóng van ban đầu
-  currentValveAngle = 0;
+  valveServo.write(VALVE_CLOSED_ANGLE);
+  currentValveAngle = VALVE_CLOSED_ANGLE;
   
   Serial.println("✅ Servo initialized");
 }
@@ -195,7 +224,9 @@ void reconnect() {
       client.subscribe("garden/control/water_valve");
       client.subscribe("garden/control/soil_calibration");
       
-      client.publish("garden/status/board2", "ONLINE");
+      //client.publish("garden/status/board2", "ONLINE");
+      client.publish("garden/status/board2", "{\"status\":\"ONLINE\",\"device\":\"BOARD2_SOIL\"}");
+
       
       DynamicJsonDocument infoDoc(512);
       infoDoc["device_id"] = CLIENT_ID;
@@ -203,7 +234,7 @@ void reconnect() {
       infoDoc["version"] = "2.0";
       infoDoc["auto_watering"] = autoWatering;
       infoDoc["ip"] = WiFi.localIP().toString();
-      infoDoc["features"] = "soil_sensor,servo_valve,relay_pump,calibration,auto_watering";
+      infoDoc["features"] = "soil_sensor,servo_valve,relay_pump,calibration,auto_watering,lcd_display";
       
       String infoStr;
       serializeJson(infoDoc, infoStr);
@@ -235,7 +266,7 @@ void sendSensorData() {
   
   // Tạo JSON data
   DynamicJsonDocument doc(512);
-  doc["m"] = soilMoistureValue;
+  doc["moisture_value"] = soilMoistureValue;
   doc["analog"] = soilAnalog;
   doc["percentage"] = soilMoisturePercent;
   doc["potentiometer"] = potValue;
@@ -254,15 +285,15 @@ void sendSensorData() {
   client.publish(PUBLISH_TOPIC, payload.c_str());
   Serial.println("[SENSOR] Gửi: " + payload);
   
+  // Cập nhật LCD
+  updateLCDDisplay();
+  
   if (autoWatering) {
     handleAutoWatering(soilMoistureValue);
   }
 }
 
 void handleAutoWatering(int moistureValue) {
-  static unsigned long lastWatering = 0;
-  static bool isWatering = false;
-  
   // Kiểm tra thời gian tối thiểu giữa các lần tưới
   if (millis() - lastWatering < 60000) {
     return;
@@ -276,13 +307,9 @@ void handleAutoWatering(int moistureValue) {
     
     Serial.println("[AUTO] Bật tưới nước (độ ẩm thấp: " + String(moistureValue) + ")");
     
-    // Tự động tắt sau thời gian quy định
-    setTimeout([]() {
-      controlValve(false);
-      isWatering = false;
-      lastWatering = millis();
-      Serial.println("[AUTO] Tắt tưới nước");
-    }, WATERING_DURATION);
+    // Tự động tắt sau thời gian quy định - dùng timer system thay vì setTimeout
+    valveCloseTimer = millis() + WATERING_DURATION;
+    valveTimerActive = true;
   }
   // Độ ẩm cao - đóng van
   else if (moistureValue <= MOISTURE_HIGH_THRESHOLD && isWatering) {
@@ -296,12 +323,12 @@ void handleAutoWatering(int moistureValue) {
 
 void controlValve(bool open) {
   if (open) {
-    controlValveServo(90);
+    controlValveServo(VALVE_OPEN_ANGLE);
     digitalWrite(RELAY_PUMP_PIN, HIGH);
     pumpActive = true;
     Serial.println("[VALVE] Mở van nước");
   } else {
-    controlValveServo(0);
+    controlValveServo(VALVE_CLOSED_ANGLE);
     digitalWrite(RELAY_PUMP_PIN, LOW);
     pumpActive = false;
     Serial.println("[VALVE] Đóng van nước");
@@ -313,6 +340,36 @@ void controlValveServo(int angle) {
   valveServo.write(angle);
   currentValveAngle = angle;
   Serial.println("[SERVO] Góc van: " + String(angle) + "°");
+}
+
+void updateLCDDisplay() {
+  if (millis() - lastLCDUpdate < LCD_UPDATE_INTERVAL) {
+    return;
+  }
+  lastLCDUpdate = millis();
+  
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Soil Moisture Board");
+  lcd.setCursor(0, 1);
+  lcd.print("Value: " + String(soilMoistureValue));
+  lcd.setCursor(0, 2);
+  lcd.print("Percent: " + String((int)soilMoisturePercent) + "%");
+  
+  lcd.setCursor(0, 3);
+  if (pumpActive) {
+    lcd.print("Status: PUMP ON ");
+  } else {
+    lcd.print("Status: PUMP OFF");
+  }
+  
+  // Hiển thị chế độ tưới
+  lcd.setCursor(15, 0);
+  lcd.print(autoWatering ? "AUTO" : "MANU");
+  
+  // Hiển thị góc van
+  lcd.setCursor(15, 3);
+  lcd.print("V" + String(currentValveAngle));
 }
 
 void calibrateDrySoil() {
@@ -362,6 +419,9 @@ void handleButton() {
     digitalWrite(LED_PIN, autoWatering ? HIGH : LOW);
     delay(200);
     digitalWrite(LED_PIN, LOW);
+    
+    // Cập nhật LCD ngay lập tức
+    lastLCDUpdate = 0;
   }
 }
 
@@ -376,16 +436,22 @@ void sendI2CSPIData() {
   commDoc["pump_active"] = pumpActive;
   commDoc["timestamp"] = millis();
   
-  // I2C Communication
+  // I2C Communication - sửa lỗi conversion
   Wire.beginTransmission(9); // Địa chỉ thiết bị nhận
   String jsonStr;
   serializeJson(commDoc, jsonStr);
-  Wire.write(jsonStr.c_str());
+  
+  // Chuyển String thành uint8_t array để gửi qua I2C
+  uint8_t data[jsonStr.length() + 1];
+  jsonStr.getBytes(data, sizeof(data));
+  Wire.write(data, jsonStr.length());
   Wire.endTransmission();
   
-  // SPI Communication
+  // SPI Communication - sửa lỗi const void* to void*
   digitalWrite(SPI_CS_PIN, LOW);
-  SPI.transfer(jsonStr.c_str(), strlen(jsonStr.c_str()));
+  uint8_t spiData[jsonStr.length() + 1];
+  jsonStr.getBytes(spiData, sizeof(spiData));
+  SPI.transfer(spiData, jsonStr.length());
   digitalWrite(SPI_CS_PIN, HIGH);
   
   Serial.println("[I2C/SPI] Đã gửi dữ liệu đất");
@@ -407,7 +473,19 @@ void sendStatusReport() {
   
   String statusStr;
   serializeJson(statusDoc, statusStr);
-  client.publish("garden/status/board2", statusStr.c_str());
+  //client.publish("garden/status/board2", statusStr.c_str());
+  client.publish("garden/status/board2", "{\"status\":\"ONLINE\",\"device\":\"BOARD2_SOIL\"}");
+}
+
+void checkValveTimer() {
+  // Kiểm tra timer thay thế cho setTimeout
+  if (valveTimerActive && millis() >= valveCloseTimer) {
+    controlValve(false);
+    isWatering = false;
+    valveTimerActive = false;
+    lastWatering = millis();
+    Serial.println("[AUTO] Tắt tưới nước");
+  }
 }
 
 void setup() {
@@ -416,13 +494,14 @@ void setup() {
   
   Serial.println("=== Smart Garden - Board 2: Soil Moisture Control ===");
   Serial.println("Client ID: " + String(CLIENT_ID));
-  Serial.println("Features: Soil Sensor, Auto Watering, Servo Valve, Calibration");
+  Serial.println("Features: Soil Sensor, Auto Watering, Servo Valve, Calibration, LCD Display");
   
   // Load calibration từ memory
   loadCalibrationFromMemory();
   
   // Initialize hardware
   setup_i2c_spi();
+  setup_lcd();
   setup_servo();
   setup_interrupts();
   setup_adc();
@@ -438,8 +517,13 @@ void setup() {
   digitalWrite(RELAY_PUMP_PIN, LOW);
   digitalWrite(LED_PIN, LOW);
   
-  // WatchDog Timer
-  esp_task_wdt_init(WDT_TIMEOUT, true);
+  // WatchDog Timer - sửa lỗi ESP-IDF v5.x
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = WDT_TIMEOUT * 1000,
+    .idle_core_mask = 0,
+    .trigger_panic = true
+  };
+  esp_task_wdt_init(&wdt_config);
   esp_task_wdt_add(NULL);
   
   // Kết nối WiFi và MQTT
@@ -469,6 +553,9 @@ void loop() {
   
   // Kiểm tra nút bấm
   handleButton();
+  
+  // Kiểm tra valve timer (thay thế setTimeout)
+  checkValveTimer();
   
   // Gửi dữ liệu I2C/SPI mỗi 45 giây
   static unsigned long lastCommTime = 0;

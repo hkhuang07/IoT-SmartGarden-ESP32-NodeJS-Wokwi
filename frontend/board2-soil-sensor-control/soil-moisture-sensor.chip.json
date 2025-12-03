@@ -1,0 +1,19 @@
+{
+  "name": "soil-moisture-sensor",
+  "author": "Huynh Quoc Huy",
+  "pins": [
+    "VCC",
+    "GND",
+    "AO"
+  ],
+  "controls": [
+    {
+      "name": "moisture_value",
+      "type": "slider",
+      "label": "Soil Moisture (ADC)",
+      "min": 1000,
+      "max": 4000,
+      "default": 2500
+    }
+  ]
+}
