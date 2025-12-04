@@ -1,0 +1,11 @@
+[wokwi]
+version = 1
+# Thiết lập bo mạch ESP32 
+target = "esp32-devkit-v1" 
+
+# Chỉ định tệp mã nguồn (.ino) chính của bạn
+firmware = "sketch.ino" 
+
+# Cấu hình biên dịch (cho Wokwi biết cách gọi Arduino CLI)
+[build]
+board = "esp32:esp32:esp32"

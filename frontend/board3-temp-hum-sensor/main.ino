@@ -7,7 +7,8 @@
  * - Publish to MQTT broker.hivemq.com
  * - Store data in MongoDB Atlas via Node.js backend
  * - Device ID: ESP_SENSOR_DHT22_01
- * 
+ * - Author: Huynh Quoc Huy
+ *
  * MQTT Topic: garden/sensor/temp_hum_data
  * Database Collection: temp_hum_readings
  */

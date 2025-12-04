@@ -89,7 +89,9 @@ mode_button = Pin(MODE_BUTTON_PIN, Pin.IN, Pin.PULL_UP)
 status_led = None
 builtin_led = None
 
-class I2CLCD1602:    
+class I2CLCD1602:
+    """Simple I2C LCD driver"""
+    
     def __init__(self, i2c, addr=0x27, cols=16, rows=2):
         self.i2c = i2c
         self.addr = addr
@@ -98,12 +100,14 @@ class I2CLCD1602:
         self._init()
     
     def _init(self):
+        """Initialize LCD"""
         init_cmds = [0x33, 0x32, 0x28, 0x0C, 0x06, 0x01]
         for cmd in init_cmds:
             self._send_cmd(cmd)
             time.sleep_ms(5)
     
     def _send_cmd(self, cmd):
+        """Send command to LCD"""
         high_nib = cmd & 0xF0
         low_nib = (cmd << 4) & 0xF0
         self._i2c_write(high_nib | 0x04)
@@ -112,6 +116,7 @@ class I2CLCD1602:
         self._i2c_write(low_nib)
     
     def _send_data(self, data):
+        """Send data to LCD"""
         high_nib = data & 0xF0
         low_nib = (data << 4) & 0xF0
         self._i2c_write(high_nib | 0x05)
@@ -120,26 +125,31 @@ class I2CLCD1602:
         self._i2c_write(low_nib | 0x01)
     
     def _i2c_write(self, data):
+        """Write to I2C"""
         data_with_backlight = data | 0x08
         self.i2c.writeto(self.addr, bytes([data_with_backlight]))
         time.sleep_us(50)
     
     def clear(self):
+        """Clear display"""
         self._send_cmd(0x01)
         time.sleep_ms(2)
     
     def putstr(self, string):
+        """Print string to display"""
         for char in string:
             if 32 <= ord(char) <= 126:
                 self._send_data(ord(char))
     
     def move_to(self, col, row):
+        """Move cursor to position"""
         if row == 0:
             self._send_cmd(0x80 | col)
         elif row == 1:
             self._send_cmd(0xC0 | col)
 
 def setup_lcd():
+    """Setup LCD display"""
     global lcd
     try:
         print("📱 Setting up LCD...")
@@ -159,6 +169,7 @@ def setup_lcd():
         return False
 
 def update_lcd_display():
+    """Update LCD with current values"""
     global lcd, mqtt_connected, water_percentage, roof_percentage, current_temperature, current_humidity
     
     if not lcd:
@@ -166,6 +177,8 @@ def update_lcd_display():
         
     try:
         lcd.clear()
+        
+        # Line 1: Temperature and Humidity
         temp_str = f"{current_temperature:.1f}C"
         hum_str = f"{current_humidity:.0f}%"
         mode_str = "A" if auto_mode else "M"
@@ -174,6 +187,7 @@ def update_lcd_display():
         lcd.move_to(0, 0)
         lcd.putstr(line1[:16])
         
+        # Line 2: Control status
         line2 = f"W:{water_percentage}% R:{roof_percentage}%"
         line2 += " ONLINE" if mqtt_connected else " OFFLINE"
         
@@ -183,15 +197,19 @@ def update_lcd_display():
     except Exception as e:
         print(f"❌ LCD update error: {e}")
 
+# ===== SERVO FUNCTIONS (Log Tối ưu) =====
 
 def setup_servos():
+    """Setup servo motors - Sử dụng dải 40-115"""
     global servo_water, servo_roof
     try:
         print("🔧 Setting up servos...")
         
+        # --- SERVO WATER (Pin 15) ---
         water_pin = Pin(WATER_SERVO_PIN)
         servo_water = PWM(water_pin, freq=SERVO_FREQ, duty=WATER_CLOSE_DUTY) 
         
+        # --- SERVO ROOF (Pin 14) ---
         roof_pin = Pin(ROOF_SERVO_PIN)
         servo_roof = PWM(roof_pin, freq=SERVO_FREQ, duty=ROOF_CLOSE_DUTY)
         
@@ -202,12 +220,14 @@ def setup_servos():
         return False
 
 def set_water_percentage(percentage):
+    """Set water valve percentage (0-100) - FIX: Khôi phục tối ưu hóa và log ngắn gọn"""
     global water_percentage, servo_water
     
     if not servo_water: return
         
     percentage = max(0, min(100, percentage))
     
+    # 🎯 TỐI ƯU HÓA: Nếu giá trị không thay đổi, không gửi lệnh và không in log.
     if percentage == water_percentage:
         return 
     
@@ -216,13 +236,16 @@ def set_water_percentage(percentage):
     # Tính Duty: Ánh xạ 0-100% sang dải an toàn (CLOSE_DUTY - OPEN_DUTY)
     duty = WATER_CLOSE_DUTY + (percentage * (WATER_OPEN_DUTY - WATER_CLOSE_DUTY) / 100)
     
+    # .duty() sử dụng độ phân giải 10-bit mặc định
     servo_water.duty(int(duty)) 
     
+    # In log ngắn gọn, chỉ khi hành động xảy ra
     action = "BẬT" if percentage == 100 else "TẮT"
     print(f"💧 Water Valve: {action} (Duty: {int(duty)})")
     update_lcd_display()
 
 def set_roof_percentage(percentage):
+    """Set roof percentage (0-100) - FIX: Khôi phục tối ưu hóa và log ngắn gọn"""
     global roof_percentage, servo_roof
     
     if not servo_roof: return
@@ -241,12 +264,13 @@ def set_roof_percentage(percentage):
     
     servo_roof.duty(int(duty))
     
-    action = "OPEN" if percentage == 100 else "CLOSE"
+    action = "MỞ" if percentage == 100 else "ĐÓNG"
     print(f"🏠 Roof Valve: {action} (Duty: {int(duty)})")
     update_lcd_display()
 
 
 def mqtt_callback(topic, msg):
+    """MQTT callback function for incoming messages"""
     global mqtt_messages_received, current_temperature, current_humidity, last_temp_update
     global water_percentage, roof_percentage, auto_mode
     
@@ -507,7 +531,7 @@ def main():
                     last_status_print = current_time
                 if current_time % 60000 < 1000: gc.collect()
                 
-                time.sleep_ms(100) 
+                time.sleep_ms(100) # Chu kỳ loop 100ms
                 
             except KeyboardInterrupt:
                 print("\n🛑 System interrupted by user")

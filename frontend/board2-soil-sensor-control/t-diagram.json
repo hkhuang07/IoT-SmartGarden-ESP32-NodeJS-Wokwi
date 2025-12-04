@@ -12,7 +12,7 @@
       "left": 177.6,
       "attrs": {}
     },
-    { "type": "wokwi-servo", "id": "servo1", "top": 7.6, "left": 470.4, "attrs": {} },
+    { "type": "wokwi-servo", "id": "servo1", "top": -107.6, "left": 470.4, "attrs": {} },
     {
       "type": "wokwi-resistor",
       "id": "r1",
@@ -25,8 +25,8 @@
     {
       "type": "wokwi-lcd1602",
       "id": "lcd1",
-      "top": 140.8,
-      "left": 620,
+      "top": -3.2,
+      "left": 543.2,
       "attrs": { "pins": "i2c" }
     },
     {
@@ -65,8 +65,6 @@
     [ "bb1:31t.e", "esp:32", "blue", [ "v38.4", "h-326.4", "v-240" ] ],
     [ "pot1:VCC", "bb1:tp.25", "red", [ "v0" ] ],
     [ "pot1:GND", "bb1:tn.24", "black", [ "v0" ] ],
-    [ "lcd1:GND", "bb1:tn.46", "black", [ "h0" ] ],
-    [ "lcd1:VCC", "bb1:tp.47", "red", [ "h-105.6", "v0.1" ] ],
     [ "lcd1:SDA", "bb1:58t.a", "limegreen", [ "h0" ] ],
     [ "lcd1:SCL", "bb1:59t.b", "green", [ "h0" ] ],
     [ "esp:21", "bb1:58t.e", "limegreen", [ "h9.6", "v316.8", "h403.2", "v-86.4" ] ],
@@ -76,6 +74,8 @@
       "green",
       [ "h9.6", "v-57.6", "h-211.2", "v412.8", "h0", "v0", "h624", "v19.2" ]
     ],
+    [ "lcd1:VCC", "bb1:tp.46", "red", [ "h-38.4", "v0.1" ] ],
+    [ "lcd1:GND", "bb1:tn.46", "black", [ "h-48", "v134.4" ] ],
     [ "r1:1", "bb1:20t.b", "", [ "$bb" ] ],
     [ "r1:2", "bb1:26t.b", "", [ "$bb" ] ],
     [ "btn1:1.l", "bb1:6t.b", "", [ "$bb" ] ],

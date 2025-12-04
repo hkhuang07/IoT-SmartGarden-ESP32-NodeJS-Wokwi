@@ -165,19 +165,19 @@ void deactivateRoofServo() {
     }
 }
 
-void activateValveServo(int angle) {
+/*void activateValveServo(int angle) {
     valveServo.write(constrain(angle, 0, 180));
     valve_servo_active = (angle != 0);
     Serial.println("💧 Valve servo ACTIVATED: " + String(angle) + " degrees");
-}
+}*/
 
-void deactivateValveServo() {
+/*void deactivateValveServo() {
     if (valve_servo_active) {
         valveServo.write(0); 
         valve_servo_active = false;
         Serial.println("💧 Valve servo DEACTIVATED");
     }
-}
+}*/
 
 // HÀM ĐIỀU KHIỂN LED 
 void setLEDBrightness(int brightness) { 
@@ -234,7 +234,7 @@ void auto_control_logic() {
         deactivateRelay();
         setLEDBrightness(0);
         activateRoofServo(180); 
-        deactivateValveServo();
+        //deactivateValveServo();
         
     // --- 2. TỐI ---
     } else if (light_level < LIGHT_MIN) {
@@ -242,7 +242,7 @@ void auto_control_logic() {
         activateRelay();
         setLEDBrightness(255); 
         activateRoofServo(0); 
-        deactivateValveServo();
+        //deactivateValveServo();
         
     // --- 3. ÁNH SÁNG VỪA PHẢI ---
     } else {
@@ -258,7 +258,7 @@ void auto_control_logic() {
         }
 
         activateRoofServo(0); 
-        deactivateValveServo();
+        //deactivateValveServo();
     }
 }
 
@@ -361,12 +361,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         activateRoofServo(angle);
         updateLCD();
         
-    } else if (command == "control_valve_servo") {
+    } /*else if (command == "control_valve_servo") {
         int angle = json_doc["angle"];
-        activateValveServo(angle);
+        //activateValveServo(angle);
         updateLCD();
+      }*/
         
-    } else if (command == "get_status") {
+     else if (command == "get_status") {
         publishSystemStatus();
         publishSensorData();
     }
@@ -484,7 +485,7 @@ void setup() {
     // Initialize servos
     Serial.println("Setting initial servo positions...");
     activateRoofServo(0); 
-    deactivateValveServo();
+    //deactivateValveServo();
     
     // Initialize LCD
     Serial.println("Initializing LCD display...");
@@ -572,3 +573,4 @@ void loop() {
     // Small delay to prevent excessive CPU usage
     delay(100);
 }
+
