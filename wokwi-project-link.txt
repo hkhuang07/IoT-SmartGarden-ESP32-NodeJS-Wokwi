@@ -1,0 +1,20 @@
+============================================
+	WOKWI PROJECT
+============================================
+- Light Sensor & Control Board:
+https://wokwi.com/projects/448685416867836929
+
+- Soil Moisture Sensor & Control Board:
+https://wokwi.com/projects/448783641378888705
+
+- Temperature Humidity Sensor Board:
+https://wokwi.com/projects/448685763460007937
+
+- Temperature Humidity Control Board:
+https://wokwi.com/projects/448686190558737409
+
+- NPK Sensor & Control Board:
+https://wokwi.com/projects/448687390073286657
+
+- pH Sensor & Control Board:
+https://wokwi.com/projects/448759814472403969
