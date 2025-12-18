@@ -573,4 +573,3 @@ void loop() {
     // Small delay to prevent excessive CPU usage
     delay(100);
 }
-

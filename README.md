@@ -1,508 +1,872 @@
-# 🌱 Smart Garden IoT System - ESP32 NodeJS Wokwi
+# 🌿 IoT Smart Garden Monitoring and Automation System
 
-> **Hệ thống IoT vườn thông minh hoàn chỉnh với 6 board ESP32, MQTT, NodeJS API, và giao diện web/mobile**
+A comprehensive IoT solution for real-time monitoring and automated management of garden environments using ESP32, Node.js, and Wokwi simulation.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![ESP32](https://img.shields.io/badge/ESP32-Compatible-green.svg)](https://www.espressif.com/en/products/socs/esp32)
-[![MQTT](https://img.shields.io/badge/MQTT-5.0-blue.svg)](https://mqtt.org/)
-[![NodeJS](https://img.shields.io/badge/NodeJS-18+-brightgreen.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-v18+-green.svg)](https://nodejs.org/)
+[![ESP32](https://img.shields.io/badge/ESP32-Compatible-blue.svg)](https://www.espressif.com/)
 
-## 📋 Mục Lục
+---
 
-- [Tổng Quan Hệ Thống](#tổng-quan-hệ-thống)
-- [Kiến Trúc Hệ Thống](#kiến-trúc-hệ-thống)
-- [Các Thành Phần](#các-thành-phần)
-- [Hướng Dẫn Cài Đặt](#hướng-dẫn-cài-đặt)
-- [Hướng Dẫn Sử Dụng](#hướng-dẫn-sử-dụng)
-- [API Documentation](#api-documentation)
-- [Demo và Mô Phỏng](#demo-và-mô-phỏng)
-- [Đóng Góp](#đóng-góp)
-- [Giấy Phép](#giấy-phép)
+## 📖 Table of Contents
+- [Project Overview](#-project-overview)
+- [System Architecture](#-system-architecture)
+- [Key Features](#-key-features)
+- [Hardware Components (Simulated)](#-hardware-components-simulated)
+- [Technology Stack](#-technology-stack)
+- [Installation and Setup](#-installation-and-setup)
+- [Wokwi Simulation Links](#-wokwi-simulation-links)
+- [Database Schema](#-database-schema)
+- [API Documentation](#-api-documentation)
+- [Project Structure](#-project-structure)
+- [Configuration](#-configuration)
+- [Usage](#-usage)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [Future Improvements](#-future-improvements)
+- [License](#-license)
+- [Author](#-author)
 
-## 🌟 Tổng Quan Hệ Thống
+---
 
-Smart Garden IoT System là một hệ thống vườn thông minh toàn diện được thiết kế để tự động hóa việc chăm sóc cây trồng thông qua các cảm biến IoT và điều khiển từ xa.
+## 🌟 Project Overview
 
-### 🎯 Tính Năng Chính
+This project focuses on modernizing agriculture through IoT technology. It provides a centralized dashboard to monitor critical environmental factors such as temperature, humidity, soil moisture, pH levels, and light intensity. The system doesn't just monitor; it automates irrigation and environmental control to ensure optimal plant growth conditions.
 
-- **🌡️ Giám sát môi trường thời gian thực** (nhiệt độ, độ ẩm, ánh sáng)
-- **💧 Tưới nước tự động** dựa trên độ ẩm đất
-- **🔬 Phân tích dinh dưỡng NPK** trong đất
-- **🏠 Điều khiển mái che và đèn chiếu sáng** thông minh
-- **📱 Giao diện web/mobile** để giám sát và điều khiển
-- **🔄 Giao tiếp M2M** giữa các thiết bị
-- **🚨 Hệ thống cảnh báo** thông minh
-- **📊 Lưu trữ và phân tích dữ liệu** với MongoDB
+### Why This Project?
+- **Smart Agriculture**: Reduce water waste and optimize resource usage
+- **Remote Monitoring**: Check your garden status from anywhere
+- **Automated Care**: Let the system handle routine watering and ventilation
+- **Data-Driven Decisions**: Historical data helps understand plant needs better
 
-## 🏗️ Kiến Trúc Hệ Thống
+---
+
+## 🏗 System Architecture
+
+The system consists of three main layers:
+
+### 1. Perception Layer (ESP32 Nodes)
+Multiple ESP32 boards act as sensors and controllers, each handling specific tasks:
+- Light sensing and control
+- Soil moisture monitoring and irrigation
+- Temperature/humidity tracking and ventilation
+- pH level monitoring
+- NPK (Nitrogen, Phosphorus, Potassium) sensing
+
+### 2. Network Layer (MQTT Broker)
+Uses HiveMQ as the communication bridge between hardware and backend, enabling:
+- Real-time bidirectional communication
+- Reliable message delivery
+- Scalable device management
+
+### 3. Application Layer (Node.js & Next.js)
+- **Backend**: Node.js server handles MQTT logic, automation rules, and database storage
+- **Frontend**: Modern, responsive Next.js dashboard for real-time data visualization and manual control
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   ESP32 Boards  │    │   MQTT Broker    │    │   NodeJS API    │
-│                 │    │                  │    │                 │
-│ • Board 1: Light│    │ • broker.hivemq │    │ • REST API      │
-│ • Board 2: Soil │◄──►│ • Port: 1883    │◄──►│ • WebSocket     │
-│ • Board 3: Temp │    │ • Topic Structure│    │ • Analytics     │
-│ • Board 4: NPK  │    │ • Auto Logic    │    │ • Control CMD   │
-│ • Board 5: Pump │    │ • Alert System  │    │                 │
-│ • Board 6: Env  │    │                  │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │                       │
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Wokwi Sim     │    │   MongoDB Atlas  │    │   Web/Mobile    │
-│                 │    │                  │    │                 │
-│ • Virtual HW    │    │ • Sensor Data   │    │ • Dashboard     │
-│ • Real-time     │    │ • Device Status │    │ • Control Panel │
-│ • Testing       │    │ • Alerts        │    │ • Real-time     │
-│ • Development   │    │ • Analytics     │    │ • Notifications │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    Frontend (Next.js)                    │
+│              Real-time Dashboard & Controls              │
+└───────────────────────┬─────────────────────────────────┘
+                        │ HTTP/WebSocket
+┌───────────────────────┴─────────────────────────────────┐
+│              Backend (Node.js + Express)                 │
+│         Automation Logic │ Database │ API                │
+└───────────────────────┬─────────────────────────────────┘
+                        │ MQTT Protocol
+┌───────────────────────┴─────────────────────────────────┐
+│                  MQTT Broker (HiveMQ)                    │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+        ┌───────────────┼───────────────┬─────────────┐
+        │               │               │             │
+┌───────┴──────┐ ┌──────┴─────┐ ┌──────┴─────┐ ┌────┴─────┐
+│   ESP32      │ │   ESP32    │ │   ESP32    │ │  ESP32   │
+│ Light Board  │ │ Soil Board │ │ DHT Board  │ │ pH/NPK   │
+└──────────────┘ └────────────┘ └────────────┘ └──────────┘
 ```
 
-## 🔧 Các Thành Phần
+---
 
-### 📱 Frontend ESP32 (6 Boards)
+## ✨ Key Features
 
-#### Board 1: Light Sensor Control (C++)
+### Monitoring Capabilities
+- 🌡️ **Temperature Tracking**: Real-time air temperature monitoring
+- 💧 **Humidity Sensing**: Ambient humidity levels
+- 🌱 **Soil Moisture**: Ground water content measurement
+- ⚗️ **pH Monitoring**: Soil/water acidity levels
+- ☀️ **Light Intensity**: Lux measurements for optimal lighting
+- 🧪 **NPK Levels**: Essential nutrient monitoring (Nitrogen, Phosphorus, Potassium)
 
-- **Chức năng**: Đo ánh sáng, điều khiển đèn LED PWM, relay, servo
-- **Công nghệ**: C++, I2C/SPI, PWM, Interrupt, WatchDog
-- **Thiết bị**: LDR, LED, Relay, 2x Servo, 3x Switch, Potentiometer
+### Automation Features
+- 💦 **Smart Irrigation**: Automatic pump activation based on soil moisture and pH
+- 🌬️ **Climate Control**: Servo-controlled ventilation based on temperature/humidity
+- 💡 **Lighting Control**: Automated grow lights based on ambient light levels
+- ⚠️ **Alert System**: Visual notifications and database logging for abnormal readings
 
-#### Board 2: Soil Moisture Control (C++)
+### User Control
+- 🎮 **Manual Override**: Direct device control (pumps, lights, fans) from web interface
+- 📊 **Data Visualization**: Charts and graphs for historical trends
+- 📱 **Responsive Design**: Access from desktop, tablet, or mobile
+- 🔧 **Multi-Board Management**: Distributed logic across specialized ESP32 nodes
 
-- **Chức năng**: Đo độ ẩm đất, tưới nước tự động
-- **Công nghệ**: C++, I2C/SPI, Digital Analog, Servo
-- **Thiết bị**: Soil moisture sensor, Servo valve, Relay pump, Calibration
+---
 
-#### Board 3: Temperature + M2M Control (C++ + MicroPython)
+## 🛠 Hardware Components (Simulated)
 
-- **Chức năng**: Cảm biến nhiệt độ, giao tiếp M2M, LCD hiển thị
-- **Công nghệ**: C++ cho cảm ccp, MicroPython cho điều khiển, M2M
-- **Thiết bị**: DHT22, LCD I2C, 2x Servo, 3x Buttons, M2M I2C
+| Component | Function | Board Location |
+| :--- | :--- | :--- |
+| **ESP32** | Main microcontroller for all nodes | All Boards |
+| **DHT22** | Air temperature and humidity sensor | Board 3 |
+| **LDR Sensor** | Light intensity detection | Board 1 |
+| **Soil Moisture Sensor** | Ground water level detection | Board 2 |
+| **pH Sensor** | Soil/water acidity monitoring | Board 5 |
+| **NPK Sensor** | N-P-K nutrient level detection | Board 4 |
+| **Relay Module** | High-power device switching | Board 2 |
+| **Water Pump** | Irrigation system actuator | Board 2 |
+| **Servo Motor** | Greenhouse vent/shade control | Board 3 |
+| **I2C LCD 16x2** | Local data display | Boards 2, 3, 5 |
+| **LED Indicators** | Status indication | All Boards |
 
-#### Board 4: NPK Sensor Control (C++)
+---
 
-- **Chức năng**: Đo dinh dưỡng NPK, điều khiển tưới phân
-- **Công nghệ**: C++, Digital Analog, LCD, Servo
-- **Thiết bị**: NPK sensor, LCD display, Servo valve, Calibration
+## 💻 Technology Stack
 
-#### Board 5: Pump PWM Control (C++)
+### Frontend
+- **Framework**: Next.js 14 (React-based)
+- **Styling**: Tailwind CSS
+- **Animations**: Framer Motion
+- **Charts**: Recharts / Chart.js
+- **State Management**: React Context API / Zustand
 
-- **Chức năng**: Điều khiển bơm với PWM, WatchDog timer
-- **Công nghệ**: C++, PWM, WatchDog, Multiple relays, Flow sensor
-- **Thiết bị**: Pump relay, Main valve, Emergency valve, Flow sensor, 3x Buttons
+### Backend
+- **Runtime**: Node.js (v18+)
+- **Framework**: Express.js
+- **Real-time**: Socket.io / WebSockets
+- **MQTT Client**: mqtt.js
 
-#### Board 6: Environmental Monitor (C++)
+### Communication
+- **Protocol**: MQTT (Message Queuing Telemetry Transport)
+- **Broker**: HiveMQ Cloud / Local Mosquitto
+- **Topics Structure**: 
+  - `garden/sensor/#` - Sensor data
+  - `garden/control/#` - Device commands
+  - `garden/status/#` - Device status
 
-- **Chức năng**: Giám sát môi trường tổng hợp, I2C/SPI hub
-- **Công nghệ**: C++, Multiple I2C/SPI devices, Data aggregation
-- **Thiết bị**: Multi-sensor array, I2C communication, SPI data exchange
+### Database
+- **Primary**: MongoDB (NoSQL)
+- **Collections**: sensor_readings, device_status, alerts, notifications
+- **Export**: JSON format for data portability
 
-### 🖥️ Backend NodeJS
+### Simulation
+- **Platform**: [Wokwi](https://wokwi.com/)
+- **Language**: C++ (Arduino Framework)
+- **IDE**: Arduino IDE / PlatformIO
 
-#### MQTT Broker Server
+---
 
-- **Vị trí**: `backend/broker/server.js`
-- **Chức năng**:
-  - Xử lý tất cả dữ liệu MQTT
-  - Logic tự động hóa thông minh
-  - Quản lý thiết bị và trạng thái
-  - Hệ thống cảnh báo và thông báo
-  - M2M communication handling
+## 🚀 Installation and Setup
 
-#### REST API Server
+### Prerequisites
+- Node.js v18 or higher ([Download](https://nodejs.org/))
+- MongoDB installed locally or MongoDB Atlas account
+- MQTT Broker (HiveMQ Cloud or local Mosquitto)
+- Git for version control
+- (Optional) MQTT Explorer for testing
 
-- **Vị trí**: `backend/api/server.js`
-- **Chức năng**:
-  - REST API cho web và mobile
-  - Real-time WebSocket data
-  - Analytics và reporting
-  - Device control endpoints
-  - Alert management
-
-### 🌐 Frontend Web (NextJS)
-
-#### Dashboard Application
-
-- **Vị trí**: `frontend/web/`
-- **Chức năng**:
-  - Giao diện giám sát thời gian thực
-  - Panel điều khiển thiết bị
-  - Biểu đồ và analytics
-  - Quản lý cảnh báo
-  - Responsive design
-
-## 🚀 Hướng Dẫn Cài Đặt
-
-### Yêu Cầu Hệ Thống
-
-- **Node.js** >= 18.0.0
-- **MongoDB Atlas** account
-- **Wokwi Simulator** account (for ESP32 simulation)
-- **MQTT Broker**: broker.hivemq.com (public)
-
-### 1. Clone Repository
-
+### 1. Clone the Repository
 ```bash
-git clone <repository-url>
-cd smart-garden-iot-system
+git clone https://github.com/yourusername/iot-smartgarden-esp32-nodejs-wokwi.git
+cd iot-smartgarden-esp32-nodejs-wokwi
 ```
 
 ### 2. Backend Setup
-
 ```bash
 cd backend
 npm install
 
-# Tạo file .env
+# Create .env file
 cp .env.example .env
 
-# Chỉnh sửa file .env với thông tin MongoDB Atlas của bạn
+# Edit .env with your configuration
+nano .env
+```
+
+**Required Environment Variables:**
+```env
+# MQTT Configuration
+MQTT_BROKER=broker.hivemq.com
+MQTT_PORT=1883
+MQTT_USERNAME=your_username
+MQTT_PASSWORD=your_password
+
+# Database
+MONGODB_URI=mongodb://localhost:27017/smartgarden
+# Or use MongoDB Atlas:
 # MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/smartgarden
+
+# Server
+PORT=3001
+NODE_ENV=development
+
+# Automation Thresholds
+SOIL_MOISTURE_MIN=30
+SOIL_MOISTURE_MAX=70
+TEMP_MAX=35
+HUMIDITY_MIN=40
+```
+
+**Start the Backend Server:**
+```bash
+node broker/server.js
+# Or use nodemon for development:
+npm run dev
 ```
 
 ### 3. Frontend Setup
-
 ```bash
-cd ../frontend/web
+cd frontend/web
 npm install
 
-# Cấu hình API URL trong .env.local
-echo "NEXT_PUBLIC_API_URL=http://localhost:3001/api" > .env.local
+# Create .env.local file
+cp .env.local.example .env.local
+
+# Edit with your backend URL
+nano .env.local
 ```
 
-### 4. ESP32 Boards Setup
+**Frontend Environment Variables:**
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_MQTT_WS_URL=ws://localhost:8080
+```
 
-Mỗi board có thể chạy trong Wokwi:
-
+**Start the Development Server:**
 ```bash
-# Board 1: Light Control
-frontend/board1-light-sensor-control/
-
-# Board 2: Soil Moisture
-frontend/board2-soil-sensor-control/
-
-# Board 3: Temperature + M2M
-frontend/board3-temp-m2m-control/
-# - main.ino (C++ for sensors)
-# - micropython/main.py (MicroPython for control)
-
-# Board 4: NPK Control
-frontend/board4-npk-sensor-control/
-
-# Board 5: Pump Control
-frontend/board5-pump-pwm-control/
-
-# Board 6: Environmental Monitor
-frontend/board6-env-monitor/
+npm run dev
 ```
 
-## 🏃‍♂️ Chạy Hệ Thống
+The frontend will be available at `http://localhost:3000`
 
-### 1. Khởi động Backend
+### 4. ESP32 Code Configuration
+
+Each board has its own Arduino sketch in the `frontend/board-X` directories.
+
+**Steps for Each Board:**
+1. Open the `.ino` file in Arduino IDE or Wokwi
+2. Update WiFi credentials:
+```cpp
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+```
+
+3. Update MQTT broker settings:
+```cpp
+const char* mqtt_server = "broker.hivemq.com";
+const int mqtt_port = 1883;
+const char* mqtt_user = "your_username";
+const char* mqtt_password = "your_password";
+```
+
+4. Verify the MQTT topics match your backend configuration
+5. Upload to ESP32 or run in Wokwi simulator
+
+### 5. Database Initialization
+
+The database will be automatically initialized on first run. To manually seed data:
 
 ```bash
 cd backend
-
-# Chạy MQTT Broker
-npm run start:broker
-
-# Chạy API Server (terminal mới)
-npm run start:api
-
-# Hoặc chạy cả hai
-npm run start:all
+node scripts/seed-database.js
 ```
 
-### 2. Khởi động Frontend Web
+---
 
+## 🔗 Wokwi Simulation Links
+
+Access the complete simulations for each board module. Each link opens a fully configured Wokwi project:
+
+### Board Modules
+- **Board 1**: [Light Sensor & Control System](https://wokwi.com/projects/your-project-id-1)
+  - LDR sensor for ambient light detection
+  - Relay-controlled grow lights
+  - Automatic lighting based on time/lux levels
+
+- **Board 2**: [Soil Moisture & Irrigation System](https://wokwi.com/projects/your-project-id-2)
+  - Capacitive soil moisture sensor
+  - Water pump with relay control
+  - LCD display for moisture readings
+
+- **Board 3**: [Temperature/Humidity & Ventilation](https://wokwi.com/projects/your-project-id-3)
+  - DHT22 sensor for climate monitoring
+  - Servo motor for vent control
+  - Automatic ventilation triggers
+
+- **Board 4**: [NPK Nutrient Monitoring](https://wokwi.com/projects/your-project-id-4)
+  - Custom NPK sensor simulation
+  - Real-time nutrient level reporting
+  - Alert generation for deficiencies
+
+- **Board 5**: [pH Level Monitoring](https://wokwi.com/projects/your-project-id-5)
+  - pH sensor with analog reading
+  - LCD display for pH values
+  - Water quality alerts
+
+**Note**: Update the `wokwi-project-link.txt` file with your actual project URLs after creating them.
+
+---
+
+## 🗄 Database Schema
+
+### Collections Overview
+
+#### 1. `sensor_readings`
+Stores all sensor data with timestamps.
+
+```javascript
+{
+  _id: ObjectId,
+  boardId: String,        // "board-1", "board-2", etc.
+  sensorType: String,     // "temperature", "humidity", "soil_moisture", etc.
+  value: Number,
+  unit: String,           // "°C", "%", "pH", "lux"
+  timestamp: Date,
+  location: String        // Optional: "greenhouse-1"
+}
+```
+
+#### 2. `device_status`
+Current state of all controllable devices.
+
+```javascript
+{
+  _id: ObjectId,
+  deviceId: String,       // "pump-1", "fan-1", "light-1"
+  deviceType: String,     // "pump", "fan", "light", "servo"
+  status: String,         // "on", "off", "auto"
+  lastToggled: Date,
+  triggeredBy: String,    // "manual", "automation", "schedule"
+  boardId: String
+}
+```
+
+#### 3. `alerts`
+History of threshold breaches and warnings.
+
+```javascript
+{
+  _id: ObjectId,
+  alertType: String,      // "high_temp", "low_moisture", "ph_warning"
+  severity: String,       // "info", "warning", "critical"
+  message: String,
+  sensorValue: Number,
+  threshold: Number,
+  boardId: String,
+  resolved: Boolean,
+  timestamp: Date,
+  resolvedAt: Date
+}
+```
+
+#### 4. `notifications`
+User-facing system messages.
+
+```javascript
+{
+  _id: ObjectId,
+  title: String,
+  message: String,
+  type: String,           // "success", "info", "warning", "error"
+  read: Boolean,
+  createdAt: Date,
+  relatedAlert: ObjectId  // Reference to alerts collection
+}
+```
+
+#### 5. `automation_rules`
+User-defined automation configurations.
+
+```javascript
+{
+  _id: ObjectId,
+  ruleName: String,
+  condition: {
+    sensorType: String,
+    operator: String,     // "greater_than", "less_than", "equals"
+    value: Number
+  },
+  action: {
+    deviceId: String,
+    command: String       // "turn_on", "turn_off", "set_value"
+  },
+  enabled: Boolean,
+  createdAt: Date
+}
+```
+
+---
+
+## 📡 API Documentation
+
+### REST Endpoints
+
+#### Sensor Data
+```
+GET    /api/sensors/latest          - Get latest readings from all sensors
+GET    /api/sensors/:type/history   - Get historical data for a sensor type
+POST   /api/sensors/reading         - Submit new sensor reading (internal)
+```
+
+#### Device Control
+```
+GET    /api/devices                 - List all devices and their status
+POST   /api/devices/:id/toggle      - Toggle device on/off
+POST   /api/devices/:id/auto        - Enable/disable auto mode
+GET    /api/devices/:id/history     - Get device operation history
+```
+
+#### Alerts & Notifications
+```
+GET    /api/alerts                  - Get all alerts
+GET    /api/alerts/active           - Get unresolved alerts
+POST   /api/alerts/:id/resolve      - Mark alert as resolved
+GET    /api/notifications           - Get all notifications
+POST   /api/notifications/:id/read  - Mark notification as read
+```
+
+#### Automation Rules
+```
+GET    /api/rules                   - List all automation rules
+POST   /api/rules                   - Create new automation rule
+PUT    /api/rules/:id               - Update existing rule
+DELETE /api/rules/:id               - Delete rule
+```
+
+### MQTT Topics
+
+#### Publishing (Sensors → Backend)
+```
+garden/sensor/temperature     - Temperature readings (°C)
+garden/sensor/humidity        - Humidity readings (%)
+garden/sensor/soil_moisture   - Soil moisture (%)
+garden/sensor/ph              - pH levels (0-14)
+garden/sensor/light           - Light intensity (lux)
+garden/sensor/npk/nitrogen    - Nitrogen level
+garden/sensor/npk/phosphorus  - Phosphorus level
+garden/sensor/npk/potassium   - Potassium level
+```
+
+#### Subscribing (Backend → Devices)
+```
+garden/control/pump           - Pump commands (on/off)
+garden/control/fan            - Fan commands (on/off)
+garden/control/light          - Light commands (on/off)
+garden/control/servo          - Servo position (0-180)
+garden/status/request         - Request status update
+```
+
+---
+
+## 📁 Project Structure
+
+```
+iot-smartgarden-esp32-nodejs-wokwi/
+├── backend/
+│   ├── broker/
+│   │   ├── server.js              # Main server entry point
+│   │   ├── automation.js          # Automation logic
+│   │   └── mqttClient.js          # MQTT connection handler
+│   ├── models/
+│   │   ├── SensorReading.js       # Mongoose schema
+│   │   ├── DeviceStatus.js
+│   │   ├── Alert.js
+│   │   └── Notification.js
+│   ├── routes/
+│   │   ├── sensors.js             # Sensor API routes
+│   │   ├── devices.js             # Device control routes
+│   │   └── alerts.js              # Alert management routes
+│   ├── controllers/
+│   │   ├── sensorController.js
+│   │   ├── deviceController.js
+│   │   └── alertController.js
+│   ├── middleware/
+│   │   ├── auth.js                # Authentication middleware
+│   │   └── errorHandler.js
+│   ├── utils/
+│   │   ├── logger.js              # Winston logger config
+│   │   └── validators.js
+│   ├── scripts/
+│   │   └── seed-database.js       # Database seeding
+│   ├── package.json
+│   └── .env.example
+│
+├── frontend/
+│   ├── web/
+│   │   ├── app/
+│   │   │   ├── page.js            # Main dashboard
+│   │   │   ├── layout.js
+│   │   │   └── globals.css
+│   │   ├── components/
+│   │   │   ├── Dashboard/
+│   │   │   │   ├── SensorCard.jsx
+│   │   │   │   ├── DeviceControl.jsx
+│   │   │   │   └── AlertPanel.jsx
+│   │   │   ├── Charts/
+│   │   │   │   ├── LineChart.jsx
+│   │   │   │   └── GaugeChart.jsx
+│   │   │   └── Layout/
+│   │   │       ├── Header.jsx
+│   │   │       └── Sidebar.jsx
+│   │   ├── lib/
+│   │   │   ├── mqtt.js            # MQTT client for browser
+│   │   │   └── api.js             # API helper functions
+│   │   ├── hooks/
+│   │   │   ├── useSensorData.js
+│   │   │   └── useDeviceControl.js
+│   │   ├── public/
+│   │   ├── package.json
+│   │   └── next.config.js
+│   │
+│   ├── board-1/                   # Light control board
+│   │   ├── board-1.ino
+│   │   ├── diagram.json           # Wokwi circuit
+│   │   └── wokwi.toml
+│   ├── board-2/                   # Soil & irrigation board
+│   │   ├── board-2.ino
+│   │   ├── diagram.json
+│   │   └── wokwi.toml
+│   ├── board-3/                   # Climate control board
+│   │   ├── board-3.ino
+│   │   ├── diagram.json
+│   │   └── wokwi.toml
+│   ├── board-4/                   # NPK monitoring board
+│   │   ├── board-4.ino
+│   │   ├── diagram.json
+│   │   └── wokwi.toml
+│   └── board-5/                   # pH monitoring board
+│       ├── board-5.ino
+│       ├── diagram.json
+│       └── wokwi.toml
+│
+├── docs/
+│   ├── API.md                     # Detailed API documentation
+│   ├── HARDWARE.md                # Hardware setup guide
+│   ├── DEPLOYMENT.md              # Production deployment guide
+│   └── TROUBLESHOOTING.md         # Common issues and solutions
+│
+├── .gitignore
+├── LICENSE
+├── README.md
+├── wokwi-project-link.txt         # Links to all Wokwi simulations
+└── package.json                   # Root package.json for scripts
+```
+
+---
+
+## ⚙️ Configuration
+
+### Automation Thresholds
+
+Customize automation behavior in `backend/broker/automation.js`:
+
+```javascript
+const THRESHOLDS = {
+  soilMoisture: {
+    min: 30,        // Start irrigation below 30%
+    max: 70,        // Stop irrigation above 70%
+    critical: 20    // Critical alert below 20%
+  },
+  temperature: {
+    max: 35,        // Open vents above 35°C
+    min: 15,        // Close vents below 15°C
+    critical: 40    // Critical alert above 40°C
+  },
+  humidity: {
+    min: 40,        // Alert if humidity below 40%
+    max: 85         // Alert if humidity above 85%
+  },
+  ph: {
+    min: 6.0,       // Ideal pH minimum
+    max: 7.5,       // Ideal pH maximum
+    critical_low: 5.0,
+    critical_high: 8.5
+  },
+  light: {
+    min: 200,       // Turn on grow lights below 200 lux
+    max: 50000      // Maximum safe light intensity
+  }
+};
+```
+
+### MQTT Topic Configuration
+
+Modify topic structure in `backend/broker/mqttClient.js` if needed:
+
+```javascript
+const TOPICS = {
+  sensor: {
+    temperature: 'garden/sensor/temperature',
+    humidity: 'garden/sensor/humidity',
+    soilMoisture: 'garden/sensor/soil_moisture',
+    // ... add more topics
+  },
+  control: {
+    pump: 'garden/control/pump',
+    fan: 'garden/control/fan',
+    // ... add more topics
+  }
+};
+```
+
+---
+
+## 🎯 Usage
+
+### Starting the System
+
+1. **Start MongoDB** (if running locally):
+```bash
+mongod --dbpath /path/to/data/db
+```
+
+2. **Start Backend Server**:
+```bash
+cd backend
+npm start
+```
+
+3. **Start Frontend**:
 ```bash
 cd frontend/web
 npm run dev
 ```
 
-### 3. Chạy ESP32 Boards trên Wokwi
+4. **Start ESP32 Simulations**:
+   - Open Wokwi links for each board
+   - Click "Start Simulation" on each board
+   - Verify MQTT connections in backend logs
 
-1. Mở [Wokwi Simulator](https://wokwi.com)
-2. Upload file `diagram.json` của từng board
-3. Upload code tương ứng (`.ino` cho C++, `main.py` cho MicroPython)
-4. Start simulation
+### Using the Dashboard
 
-## 📊 API Documentation
+#### Monitoring
+- View real-time sensor data on the main dashboard
+- Check historical trends using the chart views
+- Monitor device status and last activity times
 
-### REST Endpoints
-
-#### Sensor Data
-
-```
-GET /api/sensors/current          # Dữ liệu cảm biến hiện tại
-GET /api/sensors/history/:type    # Lịch sử dữ liệu cảm biến
-```
-
-#### Device Control
-
-```
-GET  /api/devices/status          # Trạng thái thiết bị
-POST /api/control/:device         # Gửi lệnh điều khiển
-```
+#### Manual Control
+- Toggle devices using the control panel switches
+- Switch between "Auto" and "Manual" modes
+- View automation rules and their current status
 
 #### Alerts
-
-```
-GET  /api/alerts                  # Danh sách cảnh báo
-POST /api/alerts/:id/acknowledge  # Xác nhận cảnh báo
-```
-
-#### Analytics
-
-```
-GET /api/analytics/overview       # Tổng quan analytics
-```
-
-#### Configuration
-
-```
-GET  /api/config/thresholds       # Lấy ngưỡng cảnh báo
-POST /api/config/thresholds       # Cập nhật ngưỡng
-```
-
-### MQTT Topics
-
-#### Sensor Data (Publish)
-
-```
-garden/sensor/light              # Dữ liệu ánh sáng
-garden/sensor/temp_humidity      # Dữ liệu nhiệt độ/độ ẩm
-garden/sensor/soil_moisture      # Dữ liệu độ ẩm đất
-garden/sensor/npk                # Dữ liệu dinh dưỡng NPK
-garden/sensor/pump_status        # Trạng thái bơm
-garden/sensor/environment        # Dữ liệu môi trường
-```
-
-#### Control Commands (Subscribe)
-
-```
-garden/control/light             # Điều khiển đèn
-garden/control/water_valve       # Điều khiển van nước
-garden/control/roof_servo        # Điều khiển mái che
-garden/control/pump_start        # Khởi động bơm
-garden/control/pump_stop         # Dừng bơm
-```
-
-#### Device Status
-
-```
-garden/status/*                  # Trạng thái thiết bị
-garden/alerts/*                  # Cảnh báo hệ thống
-garden/system/*                  # Thông tin hệ thống
-```
-
-## 🧪 Demo và Mô Phỏng
-
-### Wokwi Simulation
-
-Mỗi ESP32 board có `diagram.json` riêng để mô phỏng trong Wokwi Simulator:
-
-#### 🏗️ Các Board ESP32 trong Wokwi
-
-1. **Board 1 (Light Control)**: `<filepath>`frontend/board1-light-sensor-control/diagram.json`</filepath>`
-
-   - **Hardware**: LDR sensor + PWM LED + 2x Servo + 3x Switches + Relay
-   - **Chức năng**: Tự động điều khiển đèn và mái che theo ánh sáng
-   - **Pins**: LDR(32), LED PWM(2), Servo Valve(4), Servo Roof(13), Switches(25,26,27), Relay(5)
-2. **Board 2 (Soil Moisture)**: `<filepath>`frontend/board2-soil-sensor-control/diagram.json`</filepath>`
-
-   - **Hardware**: Soil moisture sensor + Servo valve + Relay pump + LCD + Potentiometers
-   - **Chức năng**: Tưới nước tự động theo độ ẩm đất với LCD hiển thị
-   - **Pins**: Soil(35/34), Servo Valve(4), Relay Pump(5), LCD I2C(21/22), Buttons(25)
-3. **Board 3 (Temperature + M2M)**: `<filepath>`frontend/board3-temp-m2m-control/diagram.json`</filepath>`
-
-   - **Hardware**: DHT22 + LCD 20x4 + 2x Servo + 3x Buttons + M2M Communication
-   - **Chức năng**: Đo nhiệt độ/độ ẩm, hiển thị LCD, giao tiếp M2M với board khác
-   - **Pins**: DHT22(4), LCD I2C(21/22), Valve Servo(12), Roof Servo(13), Buttons(25,26,27)
-4. **Board 4 (NPK Sensor)**: `<filepath>`frontend/board4-npk-sensor-control/diagram.json`</filepath>`
-
-   - **Hardware**: NPK sensor + LCD + Servo valve + Calibration potentiometer
-   - **Chức năng**: Phân tích dinh dưỡng NPK và tưới phân tự động
-   - **Pins**: N(34), P(35), K(32), Servo Valve(4), LCD I2C(21/22), Button(25)
-5. **Board 5 (Pump Control)**: `<filepath>`frontend/board5-pump-pwm-control/diagram.json`</filepath>`
-
-   - **Hardware**: PWM pump + Flow sensor + 3x Relays + 3x Buttons + Pressure sensor
-   - **Chức năng**: Điều khiển bơm an toàn với WatchDog timer và giám sát lưu lượng
-   - **Pins**: PWM Pump(4), Main Valve Relay(5), Emergency Valve Relay(18), Flow(19), Pressure(34)
-6. **Board 6 (Environmental Monitor)**: `<filepath>`frontend/board6-env-monitor/diagram.json`</filepath>`
-
-   - **Hardware**: Multi-sensor array (LDR, Temperature, Soil) + 4x I2C devices + SPI communication
-   - **Chức năng**: Tổng hợp dữ liệu môi trường và làm communication hub
-   - **Pins**: LDR(32), Soil(35), I2C devices (21/22), SPI (23/19/18/5), Mode Button(25)
-
-#### 🔧 Custom Chips cho Wokwi
-
-Để mô phỏng chính xác, hệ thống bao gồm các custom chip:
-
-- **NPK Sensor**: `<filepath>`frontend/custom-chips/npk-sensor.js`</filepath>`
-
-  - Mô phỏng cảm biến dinh dưỡng NPK với đầu ra analog cho từng chất
-  - Hỗ trợ cấu hình giá trị ppm và hiệu chỉnh
-- **Soil Moisture Sensor**: `<filepath>`frontend/custom-chips/soil-moisture-sensor.js`</filepath>`
-
-  - Mô phỏng cảm biến độ ẩm đất với đầu ra digital và analog
-  - Có thể điều chỉnh ngưỡng và độ nhạy
-
-#### 🚀 Hướng Dẫn Chạy Mô Phỏng
-
-1. **Mở Wokwi Simulator**: Truy cập [https://wokwi.com](https://wokwi.com)
-2. **Upload Diagram**: Chọn file `diagram.json` của board cần mô phỏng
-3. **Upload Code**:
-
-   - File `main.ino` cho các board C++
-   - File `main.py` cho board MicroPython (Board 3 controller)
-4. **Configure Custom Chips** (nếu cần):
-
-   - Copy nội dung file custom chip vào Wokwi
-   - Cấu hình giá trị mặc định cho cảm biến
-5. **Start Simulation**: Nhấn nút "Start" để bắt đầu mô phỏng
-
-#### 📊 Monitoring trong Wokwi
-
-- **Serial Monitor**: Xem log hoạt động của ESP32
-- **Pin States**: Theo dõi trạng thái các pin
-- **Custom Variables**: Giá trị của cảm biến và biến điều khiển
-- **MQTT Messages**: Monitor giao tiếp MQTT trong real-time
-
-### Real-time Testing
-
-1. **Web Dashboard**: Mở `http://localhost:3000` để xem dashboard
-2. **MQTT Testing**: Sử dụng MQTT Explorer để monitor messages
-3. **API Testing**: Test các endpoints với Postman hoặc curl
-
-## 🛠️ Tính Năng Nâng Cao
-
-### Automation Logic
-
-Hệ thống có logic tự động hóa thông minh:
-
-```javascript
-// Ví dụ: Tự động tưới khi đất khô
-if (soilMoisture < 30%) {
-  openValve();
-  startPump();
-  
-  setTimeout(() => {
-    closeValve();
-    stopPump();
-  }, 5000);
-}
-
-// Điều khiển mái che theo nhiệt độ
-if (temperature > 32°C) {
-  openRoof();
-} else if (temperature < 20°C) {
-  closeRoof();
-}
-```
-
-### M2M Communication
-
-Board 3 (MicroPython) giao tiếp với Board 1 (C++) qua I2C:
-
-```python
-# MicroPython code
-def send_m2m_data(data):
-    i2c.writeto(0x42, json.dumps(data).encode())
-```
-
-### WatchDog System
-
-Board 5 có WatchDog timer để đảm bảo an toàn:
-
-```cpp
-// ESP32 WatchDog
-esp_task_wdt_init(15, true);  // 15 seconds timeout
-esp_task_wdt_add(NULL);
-```
-
-### Alert System
-
-Hệ thống cảnh báo thông minh với phân cấp độ ưu tiên:
-
-- **CRITICAL**: Máy bơm chạy quá lâu, nhiệt độ nguy hiểm
-- **WARNING**: Độ ẩm thấp, ánh sáng yếu
-- **INFO**: Thiết bị online/offline, bảo trì định kỳ
-
-## 📱 Mobile App (Tùy chọn)
-
-Có thể phát triển mobile app sử dụng React Native hoặc Flutter với cùng API endpoints.
-
-## 🔧 Customization
-
-### Thêm Cảm Biến Mới
-
-1. Tạo board mới trong `frontend/`
-2. Thêm MQTT topics mới
-3. Cập nhật automation logic
-4. Thêm API endpoints nếu cần
-
-### Tùy Chỉnh Ngưỡng
-
-```javascript
-// backend/broker/automation.js
-const THRESHOLDS = {
-  LIGHT: { LOW: 300, HIGH: 900 },
-  TEMPERATURE: { MIN: 18, MAX: 35 },
-  HUMIDITY: { MIN: 40, MAX: 80 },
-  SOIL_MOISTURE: { CRITICAL: 30, LOW: 40, OPTIMAL: 60 }
-};
-```
-
-### Thêm Tính Năng Web
-
-Mở rộng dashboard trong `frontend/web/pages/index.tsx` với các component mới.
-
-## 🤝 Đóng Góp
-
-1. Fork repository
-2. Tạo feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Mở Pull Request
-
-## 📝 TODO / Future Features
-
-- [ ] Mobile app (React Native)
-- [ ] Machine learning cho dự đoán
-- [ ] Weather API integration
-- [ ] Email/SMS notifications
-- [ ] Multi-garden support
-- [ ] Advanced analytics dashboard
-- [ ] Energy monitoring
-- [ ] Plant disease detection
-- [ ] Automated fertilization system
-
-## 📞 Hỗ Trợ
-
-Nếu có vấn đề hoặc câu hỏi:
-
-1. Tạo Issue trong repository
-2. Check documentation
-3. Review code examples
-
-## 📄 Giấy Phép
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
-## 🏆 Credits
-
-- **ESP32 Development**: Espressif Systems
-- **MQTT Broker**: HiveMQ Public Broker
-- **Simulation**: Wokwi Simulator
-- **Database**: MongoDB Atlas
-- **Framework**: Next.js, Node.js, Express.js
+- Check the alert panel for any warnings
+- Click on alerts to see detailed information
+- Mark alerts as resolved after addressing issues
+
+### Testing Automation
+
+1. **Simulate Dry Soil**:
+   - In Wokwi Board 2, adjust soil moisture sensor to low value
+   - Watch backend logs for automation trigger
+   - Verify pump turns on automatically
+   - Check dashboard for status update
+
+2. **Simulate High Temperature**:
+   - In Wokwi Board 3, increase DHT22 temperature reading
+   - Observe servo motor opening vents
+   - Verify fan activation if threshold exceeded
+
+3. **Test Manual Override**:
+   - Toggle pump manually from dashboard
+   - Verify ESP32 receives command
+   - Check that automation respects manual mode
 
 ---
 
-**🌱 Smart Garden IoT System - Growing Plants with Intelligence 🌱**
+## 🔧 Troubleshooting
 
-Made with ❤️ for sustainable agriculture and IoT innovation.
+### Common Issues
+
+#### MQTT Connection Failed
+```
+Error: Connection refused: Not authorized
+```
+**Solution**: Check MQTT credentials in `.env` file and ESP32 code
+
+#### Database Connection Error
+```
+MongoNetworkError: failed to connect to server
+```
+**Solution**: 
+- Verify MongoDB is running: `sudo systemctl status mongod`
+- Check connection string in `.env`
+- Ensure firewall allows MongoDB port (27017)
+
+#### ESP32 WiFi Connection Issues
+**Solution**:
+- Verify WiFi credentials in `.ino` files
+- Check that SSID is 2.4GHz (ESP32 doesn't support 5GHz)
+- Ensure router allows new device connections
+
+#### Sensor Reading "NaN" or Invalid
+**Solution**:
+- Check sensor wiring in Wokwi diagram
+- Verify sensor library versions match
+- Add delays between sensor readings
+
+#### Frontend API Calls Failing
+**Solution**:
+- Check `NEXT_PUBLIC_API_URL` in `.env.local`
+- Verify backend server is running
+- Check browser console for CORS errors
+- Ensure backend has CORS enabled for frontend URL
+
+### Debug Mode
+
+Enable verbose logging in backend:
+```javascript
+// In broker/server.js
+const DEBUG = true;
+
+if (DEBUG) {
+  console.log('MQTT Message:', topic, message);
+}
+```
+
+Enable MQTT debug in ESP32:
+```cpp
+// In board-X.ino
+#define DEBUG true
+
+#if DEBUG
+  Serial.println("Debug: MQTT connected");
+#endif
+```
+
+### Getting Help
+
+1. Check `docs/TROUBLESHOOTING.md` for detailed solutions
+2. Review GitHub Issues for similar problems
+3. Join our Discord community (link in repository)
+4. Contact: your.email@example.com
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how you can help:
+
+### Reporting Bugs
+1. Check existing issues first
+2. Use the bug report template
+3. Include system info, logs, and steps to reproduce
+
+### Suggesting Features
+1. Open a feature request issue
+2. Describe the use case and benefits
+3. Include mockups or diagrams if applicable
+
+### Pull Requests
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'Add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
+
+### Development Guidelines
+- Follow existing code style
+- Add comments for complex logic
+- Update documentation for new features
+- Test thoroughly before submitting
+- Ensure all boards work in Wokwi simulation
+
+---
+
+## 🔮 Future Improvements
+
+### Planned Features
+- [ ] **Cloud Integration**: Google Cloud IoT Core / AWS IoT
+- [ ] **Machine Learning**: Predictive analytics for plant health
+- [ ] **Mobile App**: React Native cross-platform application
+- [ ] **Voice Control**: Alexa/Google Assistant integration
+- [ ] **Weather API**: Integration for predictive watering
+- [ ] **Camera Integration**: ESP32-CAM for plant monitoring
+- [ ] **Solar Monitoring**: Track solar panel performance
+- [ ] **Multi-Garden Support**: Manage multiple garden locations
+- [ ] **User Authentication**: Multi-user access with roles
+- [ ] **Data Export**: CSV/PDF report generation
+
+### Research Areas
+- [ ] Computer vision for pest detection
+- [ ] AI-based optimal watering schedules
+- [ ] Energy consumption optimization
+- [ ] Hydroponics system support
+- [ ] Integration with agricultural databases
+
+### Community Requests
+Vote on features in our [GitHub Discussions](https://github.com/yourusername/repo/discussions)
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### MIT License Summary
+- ✅ Commercial use
+- ✅ Modification
+- ✅ Distribution
+- ✅ Private use
+- ⚠️ Liability and warranty disclaimers apply
+
+---
+
+## 👨‍💻 Author
+
+**Huỳnh Quốc Huy**
+
+- GitHub: [@yourusername](https://github.com/yourusername)
+- Email: your.email@example.com
+- LinkedIn: [Your Name](https://linkedin.com/in/yourprofile)
+- Portfolio: [yourwebsite.com](https://yourwebsite.com)
+
+### Acknowledgments
+- Thanks to the Wokwi team for the excellent simulation platform
+- HiveMQ for providing free MQTT broker services
+- The open-source community for libraries and inspiration
+- [Add any other acknowledgments]
+
+---
+
+## 📊 Project Stats
+
+![GitHub stars](https://img.shields.io/github/stars/yourusername/repo?style=social)
+![GitHub forks](https://img.shields.io/github/forks/yourusername/repo?style=social)
+![GitHub issues](https://img.shields.io/github/issues/yourusername/repo)
+![GitHub pull requests](https://img.shields.io/github/issues-pr/yourusername/repo)
+
+---
+
+## 🌐 Links
+
+- **Repository**: [github.com/yourusername/iot-smartgarden-esp32-nodejs-wokwi](https://github.com/yourusername/iot-smartgarden-esp32-nodejs-wokwi)
+- **Documentation**: [docs.yourproject.com](https://docs.yourproject.com)
+- **Live Demo**: [demo.yourproject.com](https://demo.yourproject.com)
+- **Wokwi Projects**: See `wokwi-project-link.txt`
+
+---
+
+## 📞 Support
+
+If you find this project helpful, please consider:
+- ⭐ Starring the repository
+- 🐛 Reporting bugs
+- 💡 Suggesting new features
+- 📖 Improving documentation
+- 💰 [Sponsoring the project](https://github.com/sponsors/yourusername)
+
+---
+
+**Made with ❤️ for sustainable agriculture and IoT education**
+
+*Last updated: December 2024*

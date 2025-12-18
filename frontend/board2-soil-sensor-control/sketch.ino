@@ -38,7 +38,7 @@ const int MOISTURE_CRITICAL = 30; // Nếu độ ẩm < 30% -> Mở 180°
 const int MOISTURE_LOW = 40;      // Ngưỡng thấp (Dùng cho logic 90°)
 const int MOISTURE_OPTIMAL = 60;  // Nếu độ ẩm >= 60% -> Đóng 0°
 
-// ADC Configuration (Lỗi 1: Cần 4095 để ánh xạ)
+// ADC Configuration (: Cần 4095 để ánh xạ)
 const int MOISTURE_MAX_RAW = 4095; // Max raw ADC value (12-bit ADC)
 
 // Timing Configuration

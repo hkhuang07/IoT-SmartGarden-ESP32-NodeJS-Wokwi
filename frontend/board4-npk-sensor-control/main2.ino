@@ -1,7 +1,7 @@
 /*
- * ESP32 NPK Nutrient Control Board - PWM STABLE (OPTIMIZED)
+ * ESP32 NPK Nutrient Control Board - PWM STABLE
  * C++/Arduino Version for Smart Garden System
- * Optimized: Unified servo functions, streamlined auto_control_logic
+ * FIX: Áp dụng dải Pulse Width (us) ổn định 780-2250 cho cả ba Servo (N, P, K).
  */
 
 #include <WiFi.h>
@@ -25,12 +25,12 @@ const char* MQTT_TOPIC_ALERTS = "garden/alerts/npk_board";
 const char* MQTT_TOPIC_COMMANDS = "garden/control/npk_commands";
 
 // Hardware Pin Definitions
-const int N_PIN = 34;
-const int P_PIN = 35;
-const int K_PIN = 32;
+const int N_PIN = 34; // Nitrogen Sensor
+const int P_PIN = 35; // Phosphorus Sensor
+const int K_PIN = 32; // Potassium Sensor
 const int N_SERVO_PIN = 4;
 const int P_SERVO_PIN = 5;
-const int K_SERVO_PIN = 12;
+const int K_SERVO_PIN = 12; // GPIO0
 const int LED_PIN = 2;
 const int BUTTON_PIN = 25;
 const int POTENTIOMETER_PIN = 33;
@@ -40,13 +40,13 @@ const int LCD_I2C_ADDRESS = 0x27;
 
 // NPK Thresholds 
 const float N_MIN = 20.0;
-const float N_OPTIMAL = 35.0;
+const float N_OPTIMAL= 35.0;
 const float N_MAX = 50.0;
 const float P_MIN = 10.0;
-const float P_OPTIMAL = 20.0;
+const float P_OPTIMAL= 20.0;
 const float P_MAX = 30.0;
 const float K_MIN = 30.0;
-const float K_OPTIMAL = 45.0;
+const float K_OPTIMAL= 45.0;
 const float K_MAX = 60.0;
 
 // ADC Configuration
@@ -57,7 +57,8 @@ const float ADC_VOLTAGE = 3.3;
 float n_calibration = 1.0;
 float p_calibration = 1.0;
 float k_calibration = 1.0;
-const float PPM_SCALING_FACTOR = 50.0;
+
+const float PPM_SCALING_FACTOR = 50.0; 
 
 // Timing Configuration
 const unsigned long AUTOMATION_INTERVAL = 15000;
@@ -70,8 +71,10 @@ const unsigned long BUTTON_DEBOUNCE = 200;
 const int SERVO_OPEN_ANGLE = 180;
 const int SERVO_MID_ANGLE = 90;
 const int SERVO_CLOSED_ANGLE = 0;
-const int SERVO_MIN_PULSE_WIDTH = 780;
-const int SERVO_MAX_PULSE_WIDTH = 2250;
+
+// HẰNG SỐ PWM TỐI ƯU (Dựa trên Soil Moisture Board: 780us - 2250us)
+const int SERVO_MIN_PULSE_WIDTH = 780;  // micro seconds cho 0 độ
+const int SERVO_MAX_PULSE_WIDTH = 2250; // micro seconds cho 180 độ
 
 // System Variables
 bool system_initialized = false;
@@ -124,9 +127,6 @@ Servo nServo;
 Servo pServo;
 Servo kServo;
 
-// Enum for nutrient types
-enum NutrientType { NITROGEN, PHOSPHORUS, POTASSIUM };
-
 // Utility Functions
 void printWiFiStatus() {
     Serial.print("WiFi Status: ");
@@ -162,6 +162,7 @@ void updateLCD() {
     lcd.print(auto_mode ? "AUTO" : "MAN");
     lcd.print(" DOSING:");
     
+    // Hiển thị trạng thái Servo
     if (nServo.read() > SERVO_CLOSED_ANGLE || pServo.read() > SERVO_CLOSED_ANGLE || kServo.read() > SERVO_CLOSED_ANGLE) {
         lcd.print("ON");
     } else {
@@ -169,74 +170,71 @@ void updateLCD() {
     }
 }
 
-// === UNIFIED SERVO CONTROL ===
-void activateServo(NutrientType type, int angle) {
-    angle = constrain(angle, 0, 180);
-    
-    Servo* servo;
-    bool* active_flag;
-    int* current_angle;
-    String name;
-    
-    switch(type) {
-        case NITROGEN:
-            servo = &nServo;
-            active_flag = &n_servo_active;
-            current_angle = &current_nservo_angle;
-            name = "Nitrogen";
-            break;
-        case PHOSPHORUS:
-            servo = &pServo;
-            active_flag = &p_servo_active;
-            current_angle = &current_pservo_angle;
-            name = "Phosphorus";
-            break;
-        case POTASSIUM:
-            servo = &kServo;
-            active_flag = &k_servo_active;
-            current_angle = &current_kservo_angle;
-            name = "Potassium";
-            break;
-    }
-    
-    servo->write(angle);
-    *active_flag = (angle != 0);
-    *current_angle = angle;
-    
-    Serial.println("🧪 " + name + " servo: " + String(angle) + "° (active: " + String(*active_flag) + ")");
+// === SERVO CONTROL ===
+void activeNServo(int angle) {
+    angle = constrain(angle, 0, 180);   //giới hạn giá trị góc xoay
+    nServo.write(angle);                //xoay góc với giá trị góc angle
+    n_servo_active = (angle != 0);      //giá trị valve servo đang hoạt động
+    current_nservo_angle = angle;       //góc hiện tại bằng angle
+    Serial.println("🧪 Nitrogen servo: " + String(angle) + "°");
+    Serial.println("🧪 Nitrogen servo active: " + String(n_servo_active) + "°");
+    Serial.println("🧪 Nitrogen servo angle: " + String(current_nservo_angle) + "°");
 }
 
-void deactivateServo(NutrientType type) {
-    bool* active_flag;
-    String name;
-    
-    switch(type) {
-        case NITROGEN:
-            active_flag = &n_servo_active;
-            name = "Nitrogen";
-            break;
-        case PHOSPHORUS:
-            active_flag = &p_servo_active;
-            name = "Phosphorus";
-            break;
-        case POTASSIUM:
-            active_flag = &k_servo_active;
-            name = "Potassium";
-            break;
-    }
-    
-    if (*active_flag) {
-        activateServo(type, 0);
-        Serial.println("🧪 " + name + " servo DEACTIVATED");
+void deactivateNServo() {
+    if (n_servo_active) {
+        nServo.write(0);                //xoay góc với giá trị góc 0
+        n_servo_active = false;         //giá trị valve servo đang tắt
+        current_nservo_angle = 0;      //góc hiện tại bằng 0
+        Serial.println("🧪 Nitrogen servo DEACTIVATED: " + String(angle) + "°");
+        Serial.println("🧪 Nitrogen servo active: " + String(n_servo_active) + "°");
+        Serial.println("🧪 Nitrogen servo: " + String(current_nservo_angle) + "°");
     }
 }
 
-void deactivateAllServos() {
-    deactivateServo(NITROGEN);
-    deactivateServo(PHOSPHORUS);
-    deactivateServo(POTASSIUM);
+// === SERVO CONTROL ===
+void activePServo(int angle) {
+    angle = constrain(angle, 0, 180);   //giới hạn giá trị góc xoay
+    pServo.write(angle);                //xoay góc với giá trị góc angle
+    p_servo_active = (angle != 0);      //giá trị valve servo đang hoạt động
+    current_pservo_angle = angle;       //góc hiện tại bằng angle
+    Serial.println("🧪 Phosphorus servo: " + String(angle) + "°");
+    Serial.println("🧪 Phosphorus servo active: " + String(p_servo_active) + "°");
+    Serial.println("🧪 Phosphorus servo angle: " + String(current_pservo_angle) + "°");
 }
 
+void deactivatePServo() {
+    if (p_servo_active) {
+        pServo.write(0);                //xoay góc với giá trị góc 0
+        p_servo_active = false;         //giá trị valve servo đang tắt
+        current_pservo_angle = 0;      //góc hiện tại bằng 0
+        Serial.println("🧪 Phosphorus servo DEACTIVATED: " + String(angle) + "°");
+        Serial.println("🧪 Phosphorus servo active: " + String(p_servo_active) + "°");
+        Serial.println("🧪 Phosphorus servo: " + String(current_pservo_angle) + "°");
+    }
+}
+
+// === SERVO CONTROL ===
+void activeKServo(int angle) {
+    angle = constrain(angle, 0, 180);   //giới hạn giá trị góc xoay
+    kServo.write(angle);                //xoay góc với giá trị góc angle
+    k_servo_active = (angle != 0);      //giá trị valve servo đang hoạt động
+    current_kservo_angle = angle;       //góc hiện tại bằng angle
+    Serial.println("🧪 Potassium servo: " + String(angle) + "°");
+    Serial.println("🧪 Potassium servo active: " + String(k_servo_active) + "°");
+    Serial.println("🧪 Potassium servo angle: " + String(current_kservo_angle) + "°");
+}
+
+void deactivateKServo() {
+    if (k_servo_active) {
+        kServo.write(0);                //xoay góc với giá trị góc 0
+        k_servo_active = false;         //giá trị valve servo đang tắt
+        current_kservo_angle = 0;      //góc hiện tại bằng 0
+        Serial.println("🧪 Potassium servo DEACTIVATED: " + String(angle) + "°");
+        Serial.println("🧪 Potassium servo active: " + String(k_servo_active) + "°");
+        Serial.println("🧪 Potassium servo: " + String(current_kservo_angle) + "°");
+    }
+}
 // === LED CONTROL ===
 void setLEDBrightness(int brightness) { 
     brightness = constrain(brightness, 0, 255);
@@ -245,11 +243,6 @@ void setLEDBrightness(int brightness) {
         analogWrite(LED_PIN, brightness);
         Serial.println("💡 LED: " + String(brightness));
     }
-}
-
-void deactivateLED() {
-    setLEDBrightness(0);
-    led_active = false;
 }
 
 // Sensor Reading Functions
@@ -283,122 +276,187 @@ int readPotentiometer() {
     return reading;
 }
 
-// === UNIFIED AUTO CONTROL LOGIC ===
-struct NutrientControl {
-    float current_value;
-    float min_threshold;
-    float optimal_threshold;
-    NutrientType type;
-    String* current_state;
-    int* current_angle;
-    String name;
-};
-
-void processNutrientControl(NutrientControl& ctrl) {
-    String target_state;
-    int target_angle = 0;
-    int target_brightness = 0;
-    
-    // Determine target state and angle
-    if (ctrl.current_value < ctrl.min_threshold) {
-        target_state = ctrl.name + " CRITICAL";
-        target_angle = SERVO_OPEN_ANGLE;
-        target_brightness = 255;
-    } else if (ctrl.current_value < ctrl.optimal_threshold) {
-        target_state = ctrl.name + " LOW";
-        target_angle = SERVO_MID_ANGLE;
-        target_brightness = 127;
-    } else {
-        target_state = ctrl.name + " OPTIMAL";
-        target_angle = SERVO_CLOSED_ANGLE;
-        target_brightness = 0;
-    }
-    
-    // Check for changes
-    bool state_changed = (target_state != *ctrl.current_state);
-    bool angle_changed = (target_angle != *ctrl.current_angle);
-    
-    if (state_changed) {
-        Serial.println("🧪 State changed: " + *ctrl.current_state + " → " + target_state);
-    }
-    if (angle_changed) {
-        Serial.println("🧪 Angle changed: " + String(*ctrl.current_angle) + "° → " + String(target_angle) + "°");
-    }
-    
-    // Apply changes if needed
-    if (state_changed || angle_changed) {
-        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        Serial.print("🧪 State: "); Serial.print(*ctrl.current_state); Serial.print(" → "); Serial.println(target_state);
-        Serial.print("🧪 Level: "); Serial.print(ctrl.current_value, 1); Serial.println(" ppm");
-        
-        String status_msg = target_state;
-        if (target_state.indexOf("OPTIMAL") > 0) {
-            status_msg += " - Valve CLOSED";
-        } else if (target_state.indexOf("LOW") > 0) {
-            status_msg += " - Valve PARTIAL";
-        } else if (target_state.indexOf("CRITICAL") > 0) {
-            status_msg += " - Valve OPEN";
-        }
-        Serial.println("   " + status_msg);
-        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        
-        // Update servo and LED
-        Serial.println("🧪 Activating " + ctrl.name + " valve servo to " + String(target_angle) + "°");
-        activateServo(ctrl.type, target_angle);
-        Serial.println("💡 Setting LED brightness to " + String(target_brightness));
-        setLEDBrightness(target_brightness);
-        
-        // Save state
-        Serial.println("✅ State updated to " + target_state);
-        *ctrl.current_state = target_state;
-    } else {
-        Serial.println("⏸️  State: " + *ctrl.current_state + " (stable)");
-    }
-}
-
+// === AUTO CONTROL LOGIC ===
 void auto_control_logic() {
-    // Read all sensors
     current_nitrogen = readNitrogen();
     current_phosphorus = readPhosphorus();
     current_potassium = readPotassium();
-    
-    // Process Nitrogen
-    NutrientControl n_ctrl = {
-        current_nitrogen,
-        N_MIN,
-        N_OPTIMAL,
-        NITROGEN,
-        &current_nstate,
-        &current_nservo_angle,
-        "NITROGEN"
-    };
-    processNutrientControl(n_ctrl);
-    
-    // Process Phosphorus
-    NutrientControl p_ctrl = {
-        current_phosphorus,
-        P_MIN,
-        P_OPTIMAL,
-        PHOSPHORUS,
-        &current_pstate,
-        &current_pservo_angle,
-        "PHOSPHORUS"
-    };
-    processNutrientControl(p_ctrl);
-    
-    // Process Potassium
-    NutrientControl k_ctrl = {
-        current_potassium,
-        K_MIN,
-        K_OPTIMAL,
-        POTASSIUM,
-        &current_kstate,
-        &current_kservo_angle,
-        "POTASSIUM"
-    };
-    processNutrientControl(k_ctrl);
-}
 
+    String target_nstate = ""; //Trạng thái
+    String target_pstate = ""; //Trạng thái
+    String target_kstate = ""; //Trạng thái
+    int target_nangle = 0;     //Góc xoay 0 độ
+    int target_pangle = 0;     //Góc xoay 0 độ
+    int target_kangle = 0;     //Góc xoay 0 độ
+    int target_brightness = 0;//Độ sáng 0
+
+    
+    if (current_nitrogen > N_MIN) {
+        current_nstate = "NITROGEN LOW";               //Cập nhật trạng thái valve thành thấp       
+        nServo.write(90);                              //Xoay góc 90 độ
+        target_brightness = (float)225/2;              //Độ sáng 127
+    } else if (current_nitrogen > N_OPTIMAL) {
+        current_nstate = "NITROGEN OPTIMAL";           //Cập nhật trạng thái valve thành đủ
+        nServo.write(0);                               //Xoay góc 0 độ
+        target_brightness = 0;                         //Độ sáng 0
+    } else {
+        current_nstate = "NITROGEN CRITICAL";  
+        nServo.write(180);                              //Xoay góc 0 độ
+        target_brightness = 255;                        //Độ sáng 0
+    }
+    
+    if (current_phosphorus > P_MIN) {
+        current_pstate = "PHOSPHORUS LOW";               //Cập nhật trạng thái valve thành thấp       
+        pServo.write(90);                              //Xoay góc 90 độ
+        target_brightness = (float)225/2;              //Độ sáng 127
+    } else if (current_phosphorus > P_OPTIMAL) {
+        current_pstate = "PHOSPHORUS OPTIMAL";           //Cập nhật trạng thái valve thành đủ
+        pServo.write(0);                               //Xoay góc 0 độ
+        target_brightness = 0;                         //Độ sáng 0
+    } else {
+        current_pstate = "PHOSPHORUS CRITICAL";  
+        pServo.write(180);                              //Xoay góc 0 độ
+        target_brightness = 255;                        //Độ sáng 0
+    }
+
+    if (current_potassium > K_MIN) {
+        current_kstate = "POTASSIUM LOW";               //Cập nhật trạng thái valve thành thấp       
+        kServo.write(90);                              //Xoay góc 90 độ
+        target_brightness = (float)225/2;              //Độ sáng 127
+    } else if (current_potassium > K_OPTIMAL) {
+        current_kstate = "POTASSIUM OPTIMAL";           //Cập nhật trạng thái valve thành đủ
+        kServo.write(0);                               //Xoay góc 0 độ
+        target_brightness = 0;                         //Độ sáng 0
+    } else {
+        current_kstate = "POTASSIUM CRITICAL";  
+        kServo.write(180);                              //Xoay góc 0 độ
+        target_brightness = 255;                        //Độ sáng 0
+    }
+    
+    
+    // Kiểm tra thay đổi
+    bool state_nchanged = false
+    bool state_pchanged = false
+    bool state_kchanged = false
+
+    if (target_nstate != current_nstate) {
+        state_nchanged = true;
+        Serial.println("🧪 State changed: " + String(current_nstate) + " → " + String(target_nstate));
+    }
+    if (target_pstate != current_pstate) {
+        state_pchanged = true;
+        Serial.println("🧪 State changed: " + String(current_pstate) + " → " + String(target_pstate));
+    }
+    if (target_kstate != current_kstate) {
+        state_kchanged = true;
+        Serial.println("🧪 State changed: " + String(current_kstate) + " → " + String(target_kstate));
+    }
+
+    bool angle_nchanged = false;
+    bool angle_pchanged = false;
+    bool angle_kchanged = false;
+
+    if (target_nangle != current_nservo_angle) {
+        angle_nchanged = true;
+        Serial.println("🧪 Angle changed: " + String(current_nservo_angle) + "° → " + String(target_nangle) + "°");
+    }
+    if (target_pangle != current_pservo_angle) {
+        angle_pchanged = true;
+        Serial.println("🧪 Angle changed: " + String(current_pservo_angle) + "° → " + String(target_pangle) + "°");
+    }
+    if (target_kangle != current_kservo_angle) {
+        angle_kchanged = true;
+        Serial.println("🧪 Angle changed: " + String(current_kservo_angle) + "° → " + String(target_kangle) + "°");
+    }
+
+    if (state_nchanged || angle_nchanged) {
+        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        Serial.print("🧪 State: "); Serial.print(current_nstate); Serial.print(" → "); Serial.println(target_nstate);
+        Serial.print("🧪 Moisture: ");  Serial.print(current_nitrogen, 1); Serial.println("ppm");
+        
+        String status_Nmsg = "";
+        if (target_state == "OPTIMAL") {
+            status_Nmsg = "NITROGEN OPTIMAL (≥60%) - Valve CLOSED";
+        } else if (target_state == "LOW") {
+            status_Nmsg = "NITROGEN LOW (30-60%) - Valve PARTIAL";
+        } else if (target_state == "CRITICAL") {
+            status_Nmsg = "NITROGEN CRITICAL (<30%) - Valve OPEN";
+        }
+        Serial.println("   " + status_Nmsg);
+        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        
+        // Cập nhật servo và LED
+        Serial.println("🧪 Activating Nitrogen valve servo to " + String(target_nangle) + "°")    ;
+        activateValveServo(target_angle);
+        Serial.println("💡 Setting LED brightness to " + String(target_brightness)) ;
+        setLEDBrightness(target_brightness);
+        
+        // Lưu trạng thái
+        Serial.println("✅ State updated to " + target_nstate);
+        current_state = target_nstate;
+
+    } else {
+        Serial.println("⏸️  State: " + current_state + " (stable)");
+    }
+
+    if (state_pchanged || angle_pchanged) {
+        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        Serial.print("🧪 State: "); Serial.print(current_pstate); Serial.print(" → "); Serial.println(target_pstate);
+        Serial.print("🧪 Moisture: ");  Serial.print(current_phosphorus, 1); Serial.println("ppm");
+        
+        String status_Pmsg = "";
+        if (target_state == "OPTIMAL") {
+            status_Pmsg = "PHOSPHORUS OPTIMAL (≥60%) - Valve CLOSED";
+        } else if (target_state == "LOW") {
+            status_Pmsg = "PHOSPHORUS LOW (30-60%) - Valve PARTIAL";
+        } else if (target_state == "CRITICAL") {
+            status_Pmsg = "PHOSPHORUS CRITICAL (<30%) - Valve OPEN";
+        }
+        Serial.println("   " + status_Pmsg);
+        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        
+        // Cập nhật servo và LED
+        Serial.println("🧪 Activating Phosphorus valve servo to " + String(target_pangle) + "°")    ;
+        activateValveServo(target_pangle);
+        Serial.println("💡 Setting LED brightness to " + String(target_brightness)) ;
+        setLEDBrightness(target_brightness);
+        
+        // Lưu trạng thái
+        Serial.println("✅ State updated to " + target_pstate);
+        current_state = target_pstate;
+    } else {
+        Serial.println("⏸️  State: " + current_state + " (stable)");
+    }
+
+    if (state_kchanged || angle_kchanged) {
+        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        Serial.print("🧪 State: "); Serial.print(current_kstate); Serial.print(" → "); Serial.println(target_kstate);
+        Serial.print("🧪 Moisture: ");  Serial.print(current_potassium, 1); Serial.println("ppm");
+        
+        String status_Kmsg = "";
+        if (target_state == "OPTIMAL") {
+            status_Kmsg = "POTASSIUM OPTIMAL (≥60%) - Valve CLOSED";
+        } else if (target_state == "LOW") {
+            status_Kmsg = "POTASSIUM LOW (30-60%) - Valve PARTIAL";
+        } else if (target_state == "CRITICAL") {
+            status_Kmsg = "POTASSIUM CRITICAL (<30%) - Valve OPEN";
+        }
+        Serial.println("   " + status_Kmsg);
+        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        
+        // Cập nhật servo và LED
+        Serial.println("🧪 Activating Potassium valve servo to " + String(target_kangle) + "°")    ;
+        activateValveServo(target_kangle);
+        Serial.println("💡 Setting LED brightness to " + String(target_brightness)) ;
+        setLEDBrightness(target_brightness);
+        
+        // Lưu trạng thái
+        Serial.println("✅ State updated to " + target_kstate);
+        current_state = target_kstate;
+    } else {
+        Serial.println("⏸️  State: " + current_state + " (stable)");
+    }
+}
 void checkAutomation() {
     unsigned long current_time = millis();
     if (current_time - last_automation_check < AUTOMATION_INTERVAL) {
@@ -413,8 +471,11 @@ void checkAutomation() {
     
     Serial.println("\n🔄 Automation check...");
     auto_control_logic();
+    
     updateLCD();
+
 }
+
 
 void publishSensorData() {
     if (!client.connected()) {
@@ -457,7 +518,7 @@ void publishSystemStatus() {
     json_doc["dosing_state"] = any_servo_open ? "ACTIVE" : "INACTIVE"; 
     
     json_doc["system_uptime"] = millis() - system_start_time;
-    json_doc["firmware_version"] = "1.0.4_optimized";
+    json_doc["firmware_version"] = "1.0.3_pwm_stable"; // Cập nhật version
     json_doc["timestamp"] = millis();
     
     String message;
@@ -489,17 +550,17 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         
     } else if (command == "control_nitrogen_servo") {
         int angle = json_doc["angle"];
-        activateServo(NITROGEN, angle);
+        setNServo(angle);
         updateLCD();
         
     } else if (command == "control_phosphorus_servo") {
         int angle = json_doc["angle"];
-        activateServo(PHOSPHORUS, angle);
+        setPServo(angle);
         updateLCD();
         
     } else if (command == "control_potassium_servo") {
         int angle = json_doc["angle"];
-        activateServo(POTASSIUM, angle);
+        setKServo(angle);
         updateLCD();
         
     } else if (command == "calibrate_npk") {
@@ -585,7 +646,6 @@ void setup() {
     Serial.println();
     Serial.println("=== ESP32 NPK Nutrient Control Board ===");
     Serial.println("Author: MiniMax Agent");
-    Serial.println("Version: 1.0.4 Optimized");
     Serial.println("Starting system initialization...");
     
     system_start_time = millis();
@@ -593,6 +653,7 @@ void setup() {
     
     // Initialize hardware pins
     Serial.println("Initializing hardware pins...");
+    
     pinMode(N_PIN, INPUT);
     pinMode(P_PIN, INPUT);
     pinMode(K_PIN, INPUT);
@@ -602,11 +663,12 @@ void setup() {
     
     // Initialize servos
     Serial.println("Initializing servos...");
+    // Gắn Servo với Pulse Width Min/Max TỐI ƯU (780us - 2250us)
     nServo.attach(N_SERVO_PIN, SERVO_MIN_PULSE_WIDTH, SERVO_MAX_PULSE_WIDTH);
     pServo.attach(P_SERVO_PIN, SERVO_MIN_PULSE_WIDTH, SERVO_MAX_PULSE_WIDTH);
     kServo.attach(K_SERVO_PIN, SERVO_MIN_PULSE_WIDTH, SERVO_MAX_PULSE_WIDTH);
     
-    // Initialization pulse
+    // Khởi tạo pulse mạnh (Giống Soil Moisture)
     Serial.println("Sending initialization pulse to all servos (90 deg)...");
     nServo.write(SERVO_MID_ANGLE);
     pServo.write(SERVO_MID_ANGLE);
@@ -624,7 +686,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("Smart Garden NPK");
     lcd.setCursor(0, 1);
-    lcd.print("Control v1.0.4");
+    lcd.print("Control v1.0");
     delay(2000);
     
     // Initialize WiFi
@@ -680,7 +742,7 @@ void loop() {
     checkAutomation();
     
     // Publish sensor data periodically
-    if (current_time - last_sensor_read >= 5000) {
+    if (current_time - last_sensor_read >= 5000) { // Every 5 seconds
         readNitrogen();
         readPhosphorus();
         readPotassium();
@@ -697,7 +759,7 @@ void loop() {
     
     // Update LCD display periodically
     static unsigned long last_lcd_update = 0;
-    if (current_time - last_lcd_update >= 3000) {
+    if (current_time - last_lcd_update >= 3000) { // Update every 3 seconds
         updateLCD();
         last_lcd_update = current_time;
     }
