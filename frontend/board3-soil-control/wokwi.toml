@@ -1,0 +1,8 @@
+[wokwi]
+version = 1
+target = "esp32-devkit-c-v4" 
+
+firmware = "main.py" 
+
+[build]
+board = "esp32:esp32:esp32"

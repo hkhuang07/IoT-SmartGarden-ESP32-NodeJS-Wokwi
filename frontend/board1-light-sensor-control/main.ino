@@ -64,8 +64,8 @@ const unsigned long BUTTON_DEBOUNCE = 200;
 bool system_initialized = false;
 bool mqtt_connected = false;
 bool auto_mode = true;
-bool roof_servo_active = false;
-bool valve_servo_active = false;
+bool roof_servo_active1 = false;
+bool roof_servo_active2 = false;
 bool relay_active = false;
 bool led_pwm_active = false;
 
@@ -85,8 +85,6 @@ int target_led_brightness = 0;
 // Sensor Variables
 int current_light_level = 0;
 int current_potentiometer = 0;
-float current_temperature = 0.0; 
-float current_humidity = 0.0; 
 
 // Button State Variables
 bool button_1_last_state = HIGH;
@@ -140,7 +138,7 @@ void updateLCD() {
     lcd.print(led_brightness);
     
     lcd.setCursor(8, 1);
-    if (roof_servo_active || valve_servo_active) {
+    if (roof_servo_active1 || roof_servo_active2 ) {
         lcd.print("SRV ON");
     } else {
         lcd.print("SRV OFF");
@@ -151,16 +149,18 @@ void updateLCD() {
 void activateRoofServo(int angle) {
     roofServo1.write(constrain(angle, 0, 180));
     roofServo2.write(constrain(angle, 0, 180));
-    roof_servo_active = (angle != 0);
+    roof_servo_active1 = (angle != 0);
+    roof_servo_active2 = (angle != 0);
     Serial.println("🏠 Roof servo 1 ACTIVATED: " + String(angle) + " degrees");
     Serial.println("🏠 Roof servo 2 ACTIVATED: " + String(angle) + " degrees");
 }
 
 void deactivateRoofServo() {
-    if (roof_servo_active) {
+    if (roof_servo_active1 || roof_servo_active2) {
         roofServo1.write(0); 
         roofServo2.write(0); 
-        roof_servo_active = false;
+        roof_servo_active1 = false;
+        roof_servo_active2 = false;
         Serial.println("🏠 Roof servo DEACTIVATED");
     }
 }
@@ -221,13 +221,7 @@ int readPotentiometer() {
 }
 
 void auto_control_logic() {
-    /* LOGIC ÁNH SÁNG:
-     * - Sáng Quá Mức: Mở mái che (180), Tắt đèn.
-     * - Tối: Đóng mái che (0), Bật đèn.
-     */
-    
     int light_level = readLightSensor();
-    
     // --- 1. SÁNG QUÁ MỨC ---
     if (light_level > LIGHT_MAX) {
         Serial.println("☀️ AUTO: LIGHT TOO HIGH. Maximize roof opening.");
@@ -235,7 +229,6 @@ void auto_control_logic() {
         setLEDBrightness(0);
         activateRoofServo(180); 
         //deactivateValveServo();
-        
     // --- 2. TỐI ---
     } else if (light_level < LIGHT_MIN) {
         Serial.println("🌑 AUTO: DARKNESS DETECTED. Activating artificial light.");
@@ -243,7 +236,6 @@ void auto_control_logic() {
         setLEDBrightness(255); 
         activateRoofServo(0); 
         //deactivateValveServo();
-        
     // --- 3. ÁNH SÁNG VỪA PHẢI ---
     } else {
         Serial.println("🌥️ AUTO: Light level stable. Adjusting LED.");
@@ -256,7 +248,6 @@ void auto_control_logic() {
         } else {
             deactivateRelay();
         }
-
         activateRoofServo(0); 
         //deactivateValveServo();
     }
@@ -283,7 +274,6 @@ void publishSensorData() {
     if (!client.connected()) {
         return;
     }
-
     json_doc.clear();
     json_doc["device_id"] = "light_sensor";
     json_doc["light_value"] = current_light_level;
@@ -294,10 +284,8 @@ void publishSensorData() {
     json_doc["roof2_servo_angle"] = roofServo2.read();
     json_doc["relay_active"] = relay_active;
     json_doc["uptime"] = millis() - system_start_time;
-    
     String message;
     serializeJson(json_doc, message);
-    
     client.publish(MQTT_TOPIC_SENSOR, message.c_str());
 }
 
@@ -305,7 +293,6 @@ void publishSystemStatus() {
     if (!client.connected()) {
         return;
     }
-
     json_doc.clear();
     json_doc["device_id"] = "light_control_board";
     json_doc["status"] = "online";
@@ -315,10 +302,8 @@ void publishSystemStatus() {
     json_doc["system_uptime"] = millis() - system_start_time;
     json_doc["firmware_version"] = "1.0.0";
     json_doc["timestamp"] = millis();
-    
     String message;
     serializeJson(json_doc, message);
-    
     client.publish(MQTT_TOPIC_STATUS, message.c_str());
 }
 

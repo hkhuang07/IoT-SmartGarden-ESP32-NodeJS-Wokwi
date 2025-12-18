@@ -1,6 +1,5 @@
 /*
- * ESP32 Soil Moisture Control Board - SERVO WORKING VERSION
- * Fix: Using same servo approach as Light Sensor board
+ * ESP32 Soil Moisture Sensor+Control Board - SERVO WORKING VERSION
  * Author: Huynh Quoc Huy (Servo Working)
  */
 
@@ -95,7 +94,7 @@ void deactivateValveServo() {
         valveServo.write(0);          //xoay góc với giá trị góc 0
         valve_servo_active = false;   //giá trị valve servo đang tắt
         current_servo_angle = 0;      //góc hiện tại bằng 0
-        Serial.println("💧 Valve servo DEACTIVATED: " + String(angle) + "°");
+        Serial.println("💧 Valve servo DEACTIVATED: 0 °");
         Serial.println("💧 Valve servo active: " + String(valve_servo_active) + "°");
         Serial.println("💧 Valve servo angle: " + String(current_servo_angle) + "°");
     }
@@ -160,7 +159,7 @@ void auto_control_logic() {
     }
     
     // Kiểm tra thay đổi
-    bool state_changed = false
+    bool state_changed = false;
     if (target_state != current_state) {
         state_changed = true;
         Serial.println("💧 State changed: " + String(current_state) + " → " + String(target_state));

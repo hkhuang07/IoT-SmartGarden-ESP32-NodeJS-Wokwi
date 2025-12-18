@@ -37,7 +37,6 @@ ROOF_CLOSE_DUTY = 40
 WATER_OPEN_DUTY = 115 
 ROOF_OPEN_DUTY = 115
 
-
 SERVO_FREQ = 50 
 
 # LCD Configuration (I2C)
@@ -324,18 +323,13 @@ def mqtt_callback(topic, msg):
 
 def auto_control_logic():
     global current_temperature, current_humidity, water_percentage, roof_percentage
-
     if not auto_mode:
         return
-    
-    # Quyết định hành động dựa trên Nhiệt độ
     if current_temperature > THRESHOLD["temperature"]["max"]:
         print(f"🔥: TEMPERATURE HIGH ({current_temperature:.1f} > {THRESHOLD['temperature']['max']}). Open Water Valve")
-        
         # Nhiệt độ nóng bật van nước
         if water_percentage != 100:
             set_water_percentage(100)
-
         if current_humidity > THRESHOLD["humidity"]["max"]:
             print(f"💦: HUMIDITY HIGHT ({current_humidity:.1f} > {THRESHOLD['humidity']['max']}).Disable Roof ")
             # Nhiệt độ cao, dộ ẩm cao thì tắt kích hoạt mái che
@@ -345,16 +339,13 @@ def auto_control_logic():
             print(f"💧: HUMIDITY LOW ({current_humidity:.1f} < {THRESHOLD['humidity']['min']}).Enable Roof ")
             # Nhiệt độ cao, Độ ẩm thấp kích hoạt mái che
             if roof_percentage != 100:
-                set_roof_percentage(100)
-                    
+                set_roof_percentage(100)           
     elif current_temperature < THRESHOLD["temperature"]["min"]:
         # Log hành động chung, chỉ in khi nhiệt độ nằm ngoài ngưỡng
         print(f"❄️ AUTO: TEMP LOW ({current_temperature:.1f} < {THRESHOLD['temperature']['min']}). Close Water Valve")
-        
         # Nhiệt độ lạnh tắt van nước
         if water_percentage != 0:
             set_water_percentage(0)
-
         if current_humidity > THRESHOLD["humidity"]["max"]:
             print(f"💦: HUMIDITY HIGHT ({current_humidity:.1f} > {THRESHOLD['humidity']['max']}).Disable Roof ")
             # Nhiệt độ lạnh, dộ ẩm cao thì tắt kích hoạt mái che
