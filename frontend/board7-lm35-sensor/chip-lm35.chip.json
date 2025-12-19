@@ -1,0 +1,22 @@
+{
+  "name": "lm35",
+  "author": "Huynh Quoc Huy",
+  "pins": [
+    "VCC",
+    "GND",
+    "IN",
+    "OUT"
+  ],
+
+  "controls": [
+    {
+      "id": "moisture",
+      "label": "Temperature Moisture",
+      "type": "range",
+      "min": 0,
+      "max": 5,
+      "step": 0.1
+    } 
+  ]
+  
+}
