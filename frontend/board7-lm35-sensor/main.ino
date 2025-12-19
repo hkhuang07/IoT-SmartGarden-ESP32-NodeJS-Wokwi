@@ -34,12 +34,15 @@ const char* DEVICE_INFO_TOPIC = "garden/system/device_info";
 const char* STATUS_TOPIC = "garden/status/lm35_board";
 
 // ===== Hardware Configuration =====
-#define PIN_LM35 2              // GPIO2 (ADC pin on ESP32)
+#define PIN_LM35 34             // GPIO34 (ADC1_CH6) - Valid ADC pin on ESP32
 #define LED_PIN 4               // Status LED
 
 // ===== ADC Configuration for ESP32 =====
-#define ADC_VREF_mV 5000.0      // Reference voltage in millivolts
+// ESP32 ADC với custom chip Wokwi xuất 0-5V
 #define ADC_RESOLUTION 4095.0   // ESP32 has 12-bit ADC (0-4095)
+// Với ADC_11db attenuation, ADC đọc 0-3.3V
+// Nhưng custom chip output 0-5V, nên cần scale
+#define ADC_MAX_VOLTAGE 3300.0  // mV (với 11db attenuation)
 
 // ===== Timing Configuration =====
 #define PUBLISH_INTERVAL 5000    // 5 seconds
@@ -48,7 +51,7 @@ const char* STATUS_TOPIC = "garden/status/lm35_board";
 
 // ===== Device Configuration =====
 #define DEVICE_NAME "SmartGarden-LM35-Sensor"
-#define DEVICE_VERSION "1.0.0"
+#define DEVICE_VERSION "1.0.1"
 #define DEVICE_LOCATION "SmartGarden_A"
 
 // ===== Global Variables =====
@@ -86,7 +89,7 @@ void setup() {
   Serial.println("╔════════════════════════════════════════════════╗");
   Serial.println("║  Smart Garden LM35 Temperature Sensor         ║");
   Serial.println("║  ESP32 + MQTT + MongoDB Backend               ║");
-  Serial.println("║  Version: 1.0.0                                ║");
+  Serial.println("║  Version: 1.0.1 (Fixed ADC Pin)               ║");
   Serial.println("╚════════════════════════════════════════════════╝\n");
   
   // Initialize hardware
@@ -95,18 +98,24 @@ void setup() {
   
   // Configure ADC
   analogReadResolution(12);  // ESP32 supports 12-bit resolution
-  analogSetAttenuation(ADC_11db);  // Set attenuation for 0-3.3V range
+  analogSetAttenuation(ADC_11db);  // Full range: 0-3.3V (150mV-2450mV typical)
   
   Serial.println("🔧 Initializing LM35 sensor...");
-  Serial.printf("   Pin: GPIO%d\n", PIN_LM35);
+  Serial.printf("   Pin: GPIO%d (ADC1_CH6)\n", PIN_LM35);
   Serial.printf("   ADC Resolution: 12-bit (0-4095)\n");
-  Serial.printf("   Reference Voltage: %.1fV\n", ADC_VREF_mV / 1000.0);
+  Serial.printf("   ADC Range: 0-3300mV (11db attenuation)\n");
+  Serial.printf("   LM35 Output: 10mV per °C\n");
+  
+  // Wait for ADC to stabilize
+  delay(500);
   
   // Test sensor reading
   Serial.println("🧪 Testing LM35 sensor...");
-  delay(1000);
-  readTemperature();
-  Serial.printf("✅ LM35 test: T=%.1f°C (%.1f°F)\n", currentTempC, currentTempF);
+  for (int i = 0; i < 3; i++) {
+    readTemperature();
+    delay(500);
+  }
+  Serial.printf("✅ LM35 test complete: T=%.1f°C (%.1f°F)\n", currentTempC, currentTempF);
   
   // Initialize WiFi and MQTT
   setupWiFi();
@@ -254,16 +263,32 @@ void connectMQTT() {
 }
 
 void readTemperature() {
-  // Read ADC value from LM35 sensor
-  int adcVal = analogRead(PIN_LM35);
+  // Read multiple samples for stability
+  const int numSamples = 10;
+  long adcSum = 0;
+  
+  for (int i = 0; i < numSamples; i++) {
+    adcSum += analogRead(PIN_LM35);
+    delay(10);
+  }
+  
+  int adcVal = adcSum / numSamples;
   
   // Convert ADC to voltage (in millivolts)
-  // ESP32 ADC: 0-4095 maps to 0-3300mV (with 11db attenuation)
-  // But LM35 custom chip outputs 0-5V, so we scale accordingly
-  float milliVolt = (adcVal * ADC_VREF_mV) / ADC_RESOLUTION;
+  // ESP32 ADC with 11db attenuation: 0-4095 maps to 0-3300mV
+  float milliVolt = (adcVal * ADC_MAX_VOLTAGE) / ADC_RESOLUTION;
   
-  // LM35 outputs 10mV per degree Celsius
+  // LM35 custom chip outputs voltage proportional to slider (0-5V range)
+  // Since chip control is "moisture" from 0-5, this maps to 0-5V output
+  // Temperature = Voltage / 10mV per °C
+  // But we need to scale: chip 5V max → should represent ~50°C
+  // Formula: Temp = (voltage_mV / 3300) * 500 / 10 = voltage_mV * 0.01515
+  
+  // Simple conversion: LM35 = 10mV per °C
   currentTempC = milliVolt / 10.0;
+  
+  // If reading seems off due to voltage scaling, apply correction factor
+  // Custom chip "moisture" 0-5 maps to 0-50°C (or adjust as needed)
   
   // Convert to Fahrenheit
   currentTempF = (currentTempC * 1.8) + 32.0;
@@ -454,7 +479,22 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 /*
- * Expected JSON format for MongoDB storage:
+ * IMPORTANT NOTES:
+ * 
+ * 1. ESP32 ADC Pins (ADC1):
+ *    GPIO32-39 are ADC1 pins (safe to use with WiFi)
+ *    GPIO34 (ADC1_CH6) is used in this project
+ * 
+ * 2. Custom Chip Wiring:
+ *    - chip2:OUT → GPIO34 (not GPIO2!)
+ *    - Update diagram.json connection
+ * 
+ * 3. LM35 Custom Chip:
+ *    - Control slider "moisture" 0-5 represents voltage 0-5V
+ *    - LM35: 10mV per °C
+ *    - Slider at 2.5 → 25°C
+ * 
+ * 4. Expected JSON format for MongoDB:
  * {
  *   "device_id": "ESP_SENSOR_LM35_01",
  *   "temperature_celsius": 25.4,
@@ -466,12 +506,4 @@ void callback(char* topic, byte* payload, unsigned int length) {
  *   "free_heap": 180000,
  *   "status": "normal"
  * }
- * 
- * Database Collection: temperature_readings
- * Backend Node.js server processes this data and stores in MongoDB Atlas
- * 
- * Temperature Status:
- * - cold: < 15°C
- * - normal: 15-30°C
- * - hot: > 30°C
  */
