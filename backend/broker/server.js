@@ -3,7 +3,9 @@ const { connectToDatabase } = require("./db_connect");
 const SmartGardenAutomation = require('./automation');
 const automationLogic = new SmartGardenAutomation();
 
-const PUBLIC_BROKER = 'mqtt://broker.hivemq.com';
+//const PUBLIC_BROKER = 'mqtt://broker.hivemq.com';
+const PUBLIC_BROKER = 'mqtt://52.58.31.240';
+
 let db;
 let mqttClient;
 

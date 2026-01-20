@@ -983,9 +983,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Huỳnh Quốc Huy**
 
-- GitHub: [@hkhuang07](https://github.com/hkhuang07)
-- Email: huykyunh.k@gmail.com
-- LinkedIn: [Huynh Quoc Huy](https://www.linkedin.com/in/hkhuang07/)
+- GitHub: [@yourusername](https://github.com/yourusername)
+- Email: your.email@example.com
+- LinkedIn: [Your Name](https://linkedin.com/in/yourprofile)
+- Portfolio: [yourwebsite.com](https://yourwebsite.com)
 
 ### Acknowledgments
 
@@ -998,16 +999,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📊 Project Stats
 
-![GitHub stars](https://img.shields.io/github/stars/hkhuang07/repo?style=social)
-![GitHub forks](https://img.shields.io/github/forks/hkhuang07/repo?style=social)
-![GitHub issues](https://img.shields.io/github/issues/hkhuang07/repo)
-![GitHub pull requests](https://img.shields.io/github/issues-pr/hkhuang07/repo)
+![GitHub stars](https://img.shields.io/github/stars/yourusername/repo?style=social)
+![GitHub forks](https://img.shields.io/github/forks/yourusername/repo?style=social)
+![GitHub issues](https://img.shields.io/github/issues/yourusername/repo)
+![GitHub pull requests](https://img.shields.io/github/issues-pr/yourusername/repo)
 
 ---
 
 ## 🌐 Links
 
-- **Repository**: [github.com/hkhuang07/iot-smartgarden-esp32-nodejs-wokwi](https://github.com/hkhuang07/iot-smartgarden-esp32-nodejs-wokwi)
+- **Repository**: [github.com/yourusername/iot-smartgarden-esp32-nodejs-wokwi](https://github.com/yourusername/iot-smartgarden-esp32-nodejs-wokwi)
+- **Documentation**: [docs.yourproject.com](https://docs.yourproject.com)
+- **Live Demo**: [demo.yourproject.com](https://demo.yourproject.com)
 - **Wokwi Projects**: See `wokwi-project-link.txt`
 
 ---
