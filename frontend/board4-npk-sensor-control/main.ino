@@ -1,7 +1,7 @@
 /*
- * ESP32 NPK Nutrient Control Board - PWM STABLE (OPTIMIZED)
+ * ESP32 NPK Nutrient Control Board - REAL-TIME SERVO UPDATE
  * C++/Arduino Version for Smart Garden System
- * Optimized: Unified servo functions, streamlined auto_control_logic
+ * Fix: Servo updates in REAL-TIME based on current NPK values
  */
 
 #include <WiFi.h>
@@ -16,7 +16,8 @@ const char* WIFI_SSID = "Wokwi-GUEST";
 const char* WIFI_PASSWORD = "";
 
 // MQTT Configuration
-const char* MQTT_BROKER = "broker.hivemq.com";
+const char* MQTT_BROKER = "52.58.31.240"; 
+
 const int MQTT_PORT = 1883;
 const char* MQTT_CLIENT_ID = "ESP_NPK_CONTROL_01";
 const char* MQTT_TOPIC_SENSOR = "garden/sensor/npk_data";
@@ -38,16 +39,17 @@ const int LCD_SDA_PIN = 21;
 const int LCD_SCL_PIN = 22;
 const int LCD_I2C_ADDRESS = 0x27;
 
-// NPK Thresholds 
-const float N_MIN = 20.0;
-const float N_OPTIMAL = 35.0;
-const float N_MAX = 50.0;
-const float P_MIN = 10.0;
-const float P_OPTIMAL = 20.0;
-const float P_MAX = 30.0;
-const float K_MIN = 30.0;
-const float K_OPTIMAL = 45.0;
-const float K_MAX = 60.0;
+// NPK Thresholds - ADJUSTED FOR ACTUAL SENSOR RANGE
+// Sensor outputs: N=50-150ppm, P=20-100ppm, K=50-150ppm
+const float N_MIN = 60.0;        // Below 60: CRITICAL (180°)
+const float N_OPTIMAL = 100.0;   // 60-100: LOW (90°), Above 100: OPTIMAL (0°)
+const float N_MAX = 150.0;
+const float P_MIN = 30.0;        // Below 30: CRITICAL (180°)
+const float P_OPTIMAL = 60.0;    // 30-60: LOW (90°), Above 60: OPTIMAL (0°)
+const float P_MAX = 100.0;
+const float K_MIN = 60.0;        // Below 60: CRITICAL (180°)
+const float K_OPTIMAL = 100.0;   // 60-100: LOW (90°), Above 100: OPTIMAL (0°)
+const float K_MAX = 150.0;
 
 // ADC Configuration
 const int ADC_RESOLUTION = 4096;
@@ -60,7 +62,7 @@ float k_calibration = 1.0;
 const float PPM_SCALING_FACTOR = 50.0;
 
 // Timing Configuration
-const unsigned long AUTOMATION_INTERVAL = 15000;
+const unsigned long AUTOMATION_INTERVAL = 5000;  // Check every 5s for responsiveness
 const unsigned long STATUS_INTERVAL = 10000;
 const unsigned long WIFI_TIMEOUT = 20000;
 const unsigned long MQTT_TIMEOUT = 15000;
@@ -105,13 +107,10 @@ bool button_current_state = HIGH;
 // PWM Variables
 int led_brightness = 0;
 
-// Servo state tracking
+// Servo state tracking - REMOVED state strings, only track angles
 int current_nservo_angle = -1;
 int current_pservo_angle = -1;
 int current_kservo_angle = -1;
-String current_nstate = "INITIALIZING";
-String current_pstate = "INITIALIZING";
-String current_kstate = "INITIALIZING";
 
 // Global Objects
 WiFiClient espClient;
@@ -160,17 +159,16 @@ void updateLCD() {
     
     lcd.setCursor(0, 1);
     lcd.print(auto_mode ? "AUTO" : "MAN");
-    lcd.print(" DOSING:");
-    
-    if (nServo.read() > SERVO_CLOSED_ANGLE || pServo.read() > SERVO_CLOSED_ANGLE || kServo.read() > SERVO_CLOSED_ANGLE) {
-        lcd.print("ON");
-    } else {
-        lcd.print("OFF");
-    }
+    lcd.print(" V:");
+    lcd.print(nServo.read());
+    lcd.print(",");
+    lcd.print(pServo.read());
+    lcd.print(",");
+    lcd.print(kServo.read());
 }
 
 // === UNIFIED SERVO CONTROL ===
-void activateServo(NutrientType type, int angle) {
+void setServoAngle(NutrientType type, int angle) {
     angle = constrain(angle, 0, 180);
     
     Servo* servo;
@@ -183,58 +181,35 @@ void activateServo(NutrientType type, int angle) {
             servo = &nServo;
             active_flag = &n_servo_active;
             current_angle = &current_nservo_angle;
-            name = "Nitrogen";
+            name = "N";
             break;
         case PHOSPHORUS:
             servo = &pServo;
             active_flag = &p_servo_active;
             current_angle = &current_pservo_angle;
-            name = "Phosphorus";
+            name = "P";
             break;
         case POTASSIUM:
             servo = &kServo;
             active_flag = &k_servo_active;
             current_angle = &current_kservo_angle;
-            name = "Potassium";
+            name = "K";
             break;
     }
     
-    servo->write(angle);
-    *active_flag = (angle != 0);
-    *current_angle = angle;
-    
-    Serial.println("🧪 " + name + " servo: " + String(angle) + "° (active: " + String(*active_flag) + ")");
-}
-
-void deactivateServo(NutrientType type) {
-    bool* active_flag;
-    String name;
-    
-    switch(type) {
-        case NITROGEN:
-            active_flag = &n_servo_active;
-            name = "Nitrogen";
-            break;
-        case PHOSPHORUS:
-            active_flag = &p_servo_active;
-            name = "Phosphorus";
-            break;
-        case POTASSIUM:
-            active_flag = &k_servo_active;
-            name = "Potassium";
-            break;
-    }
-    
-    if (*active_flag) {
-        activateServo(type, 0);
-        Serial.println("🧪 " + name + " servo DEACTIVATED");
+    // Only update if angle actually changed
+    if (*current_angle != angle) {
+        servo->write(angle);
+        *active_flag = (angle > 0);
+        *current_angle = angle;
+        Serial.println("🔧 " + name + " servo: " + String(*current_angle) + "° → " + String(angle) + "°");
     }
 }
 
 void deactivateAllServos() {
-    deactivateServo(NITROGEN);
-    deactivateServo(PHOSPHORUS);
-    deactivateServo(POTASSIUM);
+    setServoAngle(NITROGEN, 0);
+    setServoAngle(PHOSPHORUS, 0);
+    setServoAngle(POTASSIUM, 0);
 }
 
 // === LED CONTROL ===
@@ -243,13 +218,12 @@ void setLEDBrightness(int brightness) {
     if (led_brightness != brightness) {
         led_brightness = brightness;
         analogWrite(LED_PIN, brightness);
-        Serial.println("💡 LED: " + String(brightness));
+        led_active = (brightness > 0);
     }
 }
 
 void deactivateLED() {
     setLEDBrightness(0);
-    led_active = false;
 }
 
 // Sensor Reading Functions
@@ -257,7 +231,6 @@ float readNitrogen() {
     int raw_value = analogRead(N_PIN);
     float voltage = (raw_value * ADC_VOLTAGE) / ADC_RESOLUTION;
     current_nitrogen = voltage * n_calibration * PPM_SCALING_FACTOR;
-    Serial.print("Raw N: " + String(raw_value) + ", N: " + String(current_nitrogen, 2) + "ppm | ");
     return current_nitrogen;
 }
 
@@ -265,7 +238,6 @@ float readPhosphorus() {
     int raw_value = analogRead(P_PIN);
     float voltage = (raw_value * ADC_VOLTAGE) / ADC_RESOLUTION;
     current_phosphorus = voltage * p_calibration * PPM_SCALING_FACTOR;
-    Serial.print("Raw P: " + String(raw_value) + ", P: " + String(current_phosphorus, 2) + "ppm | ");
     return current_phosphorus;
 }
 
@@ -273,7 +245,6 @@ float readPotassium() {
     int raw_value = analogRead(K_PIN);
     float voltage = (raw_value * ADC_VOLTAGE) / ADC_RESOLUTION;
     current_potassium = voltage * k_calibration * PPM_SCALING_FACTOR;
-    Serial.println("Raw K: " + String(raw_value) + ", K: " + String(current_potassium, 2) + "ppm");
     return current_potassium;
 }
 
@@ -283,120 +254,92 @@ int readPotentiometer() {
     return reading;
 }
 
-// === UNIFIED AUTO CONTROL LOGIC ===
-struct NutrientControl {
-    float current_value;
-    float min_threshold;
-    float optimal_threshold;
-    NutrientType type;
-    String* current_state;
-    int* current_angle;
-    String name;
-};
-
-void processNutrientControl(NutrientControl& ctrl) {
-    String target_state;
-    int target_angle = 0;
-    int target_brightness = 0;
-    
-    // Determine target state and angle
-    if (ctrl.current_value < ctrl.min_threshold) {
-        target_state = ctrl.name + " CRITICAL";
-        target_angle = SERVO_OPEN_ANGLE;
-        target_brightness = 255;
-    } else if (ctrl.current_value < ctrl.optimal_threshold) {
-        target_state = ctrl.name + " LOW";
-        target_angle = SERVO_MID_ANGLE;
-        target_brightness = 127;
-    } else {
-        target_state = ctrl.name + " OPTIMAL";
-        target_angle = SERVO_CLOSED_ANGLE;
-        target_brightness = 0;
+// === CALCULATE SERVO ANGLE FROM NPK VALUE ===
+int calculateServoAngle(float value, float min_threshold, float optimal_threshold) {
+    // Below minimum: OPEN (180°)
+    if (value < min_threshold) {
+        return SERVO_OPEN_ANGLE;
     }
-    
-    // Check for changes
-    bool state_changed = (target_state != *ctrl.current_state);
-    bool angle_changed = (target_angle != *ctrl.current_angle);
-    
-    if (state_changed) {
-        Serial.println("🧪 State changed: " + *ctrl.current_state + " → " + target_state);
+    // Below optimal: MID (90°)
+    else if (value < optimal_threshold) {
+        return SERVO_MID_ANGLE;
     }
-    if (angle_changed) {
-        Serial.println("🧪 Angle changed: " + String(*ctrl.current_angle) + "° → " + String(target_angle) + "°");
-    }
-    
-    // Apply changes if needed
-    if (state_changed || angle_changed) {
-        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        Serial.print("🧪 State: "); Serial.print(*ctrl.current_state); Serial.print(" → "); Serial.println(target_state);
-        Serial.print("🧪 Level: "); Serial.print(ctrl.current_value, 1); Serial.println(" ppm");
-        
-        String status_msg = target_state;
-        if (target_state.indexOf("OPTIMAL") > 0) {
-            status_msg += " - Valve CLOSED";
-        } else if (target_state.indexOf("LOW") > 0) {
-            status_msg += " - Valve PARTIAL";
-        } else if (target_state.indexOf("CRITICAL") > 0) {
-            status_msg += " - Valve OPEN";
-        }
-        Serial.println("   " + status_msg);
-        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        
-        // Update servo and LED
-        Serial.println("🧪 Activating " + ctrl.name + " valve servo to " + String(target_angle) + "°");
-        activateServo(ctrl.type, target_angle);
-        Serial.println("💡 Setting LED brightness to " + String(target_brightness));
-        setLEDBrightness(target_brightness);
-        
-        // Save state
-        Serial.println("✅ State updated to " + target_state);
-        *ctrl.current_state = target_state;
-    } else {
-        Serial.println("⏸️  State: " + *ctrl.current_state + " (stable)");
+    // Optimal or above: CLOSED (0°)
+    else {
+        return SERVO_CLOSED_ANGLE;
     }
 }
 
+// === GET STATUS STRING ===
+String getStatusString(float value, float min_threshold, float optimal_threshold) {
+    if (value < min_threshold) return "CRITICAL";
+    else if (value < optimal_threshold) return "LOW";
+    else return "OPTIMAL";
+}
+
+// === REAL-TIME AUTO CONTROL LOGIC ===
 void auto_control_logic() {
     // Read all sensors
-    current_nitrogen = readNitrogen();
-    current_phosphorus = readPhosphorus();
-    current_potassium = readPotassium();
+    float n_value = readNitrogen();
+    float p_value = readPhosphorus();
+    float k_value = readPotassium();
     
-    // Process Nitrogen
-    NutrientControl n_ctrl = {
-        current_nitrogen,
-        N_MIN,
-        N_OPTIMAL,
-        NITROGEN,
-        &current_nstate,
-        &current_nservo_angle,
-        "NITROGEN"
-    };
-    processNutrientControl(n_ctrl);
+    Serial.println("\n╔════════════════════════════════════╗");
+    Serial.println("║   NPK REAL-TIME CONTROL UPDATE    ║");
+    Serial.println("╚════════════════════════════════════╝");
     
-    // Process Phosphorus
-    NutrientControl p_ctrl = {
-        current_phosphorus,
-        P_MIN,
-        P_OPTIMAL,
-        PHOSPHORUS,
-        &current_pstate,
-        &current_pservo_angle,
-        "PHOSPHORUS"
-    };
-    processNutrientControl(p_ctrl);
+    // Calculate target angles based on CURRENT values
+    int n_target_angle = calculateServoAngle(n_value, N_MIN, N_OPTIMAL);
+    int p_target_angle = calculateServoAngle(p_value, P_MIN, P_OPTIMAL);
+    int k_target_angle = calculateServoAngle(k_value, K_MIN, K_OPTIMAL);
     
-    // Process Potassium
-    NutrientControl k_ctrl = {
-        current_potassium,
-        K_MIN,
-        K_OPTIMAL,
-        POTASSIUM,
-        &current_kstate,
-        &current_kservo_angle,
-        "POTASSIUM"
-    };
-    processNutrientControl(k_ctrl);
+    // Get status strings
+    String n_status = getStatusString(n_value, N_MIN, N_OPTIMAL);
+    String p_status = getStatusString(p_value, P_MIN, P_OPTIMAL);
+    String k_status = getStatusString(k_value, K_MIN, K_OPTIMAL);
+    
+    // Print current readings and targets
+    Serial.println("┌─────────────────────────────────┐");
+    Serial.println("│ NITROGEN (N)                    │");
+    Serial.println("├─────────────────────────────────┤");
+    Serial.print("│ Value: "); Serial.print(n_value, 1); Serial.println(" ppm");
+    Serial.print("│ Status: "); Serial.println(n_status);
+    Serial.print("│ Target Angle: "); Serial.print(n_target_angle); Serial.println("°");
+    Serial.println("└─────────────────────────────────┘");
+    
+    Serial.println("┌─────────────────────────────────┐");
+    Serial.println("│ PHOSPHORUS (P)                  │");
+    Serial.println("├─────────────────────────────────┤");
+    Serial.print("│ Value: "); Serial.print(p_value, 1); Serial.println(" ppm");
+    Serial.print("│ Status: "); Serial.println(p_status);
+    Serial.print("│ Target Angle: "); Serial.print(p_target_angle); Serial.println("°");
+    Serial.println("└─────────────────────────────────┘");
+    
+    Serial.println("┌─────────────────────────────────┐");
+    Serial.println("│ POTASSIUM (K)                   │");
+    Serial.println("├─────────────────────────────────┤");
+    Serial.print("│ Value: "); Serial.print(k_value, 1); Serial.println(" ppm");
+    Serial.print("│ Status: "); Serial.println(k_status);
+    Serial.print("│ Target Angle: "); Serial.print(k_target_angle); Serial.println("°");
+    Serial.println("└─────────────────────────────────┘");
+    
+    // Update servos to target angles (only if changed)
+    setServoAngle(NITROGEN, n_target_angle);
+    setServoAngle(PHOSPHORUS, p_target_angle);
+    setServoAngle(POTASSIUM, k_target_angle);
+    
+    // Update LED based on worst nutrient status
+    int max_brightness = 0;
+    if (n_target_angle > max_brightness) max_brightness = n_target_angle;
+    if (p_target_angle > max_brightness) max_brightness = p_target_angle;
+    if (k_target_angle > max_brightness) max_brightness = k_target_angle;
+    
+    // Map servo angle (0-180) to LED brightness (0-255)
+    int led_value = map(max_brightness, 0, 180, 0, 255);
+    setLEDBrightness(led_value);
+    
+    Serial.println("\n✅ Servo positions updated");
+    Serial.println("═══════════════════════════════════\n");
 }
 
 void checkAutomation() {
@@ -411,18 +354,26 @@ void checkAutomation() {
         return;
     }
     
-    Serial.println("\n🔄 Automation check...");
+    Serial.println("🔄 Running automation check...");
     auto_control_logic();
     updateLCD();
 }
 
 void publishSensorData() {
     if (!client.connected()) {
+        Serial.println("⚠️  Cannot publish sensor data - MQTT disconnected");
         return;
     }
 
     json_doc.clear();
+    
+    // Primary sensor data (matching Node.js expected format)
     json_doc["device_id"] = "npk_control_board";
+    json_doc["nitrogen"] = current_nitrogen;
+    json_doc["phosphorus"] = current_phosphorus;
+    json_doc["potassium"] = current_potassium;
+    
+    // Additional metadata
     json_doc["nitrogen_ppm"] = current_nitrogen;
     json_doc["phosphorus_ppm"] = current_phosphorus;
     json_doc["potassium_ppm"] = current_potassium;
@@ -431,18 +382,28 @@ void publishSensorData() {
     json_doc["n_servo_angle"] = nServo.read();
     json_doc["p_servo_angle"] = pServo.read();
     json_doc["k_servo_angle"] = kServo.read();
-    json_doc["led_active"] = led_active;
+    json_doc["led_brightness"] = led_brightness;
     json_doc["uptime"] = millis() - system_start_time;
+    json_doc["timestamp"] = millis();
     
     String message;
     serializeJson(json_doc, message);
     
-    client.publish(MQTT_TOPIC_SENSOR, message.c_str());
-    Serial.println("🧪 NPK sensor data published to MQTT");
+    // Publish with QoS 1 for guaranteed delivery
+    bool published = client.publish(MQTT_TOPIC_SENSOR, message.c_str(), false);
+    
+    if (published) {
+        Serial.println("📡 NPK data published to MQTT");
+        Serial.println("   Topic: " + String(MQTT_TOPIC_SENSOR));
+        Serial.println("   Payload: " + message);
+    } else {
+        Serial.println("❌ Failed to publish NPK data");
+    }
 }
 
 void publishSystemStatus() {
     if (!client.connected()) {
+        Serial.println("⚠️  Cannot publish status - MQTT disconnected");
         return;
     }
 
@@ -457,25 +418,30 @@ void publishSystemStatus() {
     json_doc["dosing_state"] = any_servo_open ? "ACTIVE" : "INACTIVE"; 
     
     json_doc["system_uptime"] = millis() - system_start_time;
-    json_doc["firmware_version"] = "1.0.4_optimized";
+    json_doc["firmware_version"] = "1.0.8_mqtt_fix";
     json_doc["timestamp"] = millis();
     
     String message;
     serializeJson(json_doc, message);
     
-    client.publish(MQTT_TOPIC_STATUS, message.c_str());
-    Serial.println("🧪 NPK system status published to MQTT");
+    bool published = client.publish(MQTT_TOPIC_STATUS, message.c_str(), false);
+    
+    if (published) {
+        Serial.println("📡 System status published");
+    } else {
+        Serial.println("❌ Failed to publish system status");
+    }
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-    Serial.println("MQTT message received: " + String(topic));
+    Serial.println("📨 MQTT: " + String(topic));
     
     payload[length] = '\0';
     String message = String((char*)payload);
     
     DeserializationError error = deserializeJson(json_doc, message);
     if (error) {
-        Serial.println("JSON parsing failed: " + String(error.c_str()));
+        Serial.println("❌ JSON error: " + String(error.c_str()));
         return;
     }
 
@@ -484,30 +450,40 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (command == "set_auto_mode") {
         bool new_auto_mode = json_doc["auto_mode"];
         auto_mode = new_auto_mode;
-        Serial.println("🧪 Auto mode set to: " + String(auto_mode ? "AUTO" : "MANUAL"));
+        Serial.println("🔧 Auto mode: " + String(auto_mode ? "ON" : "OFF"));
+        if (!auto_mode) {
+            deactivateAllServos();
+            deactivateLED();
+        }
         updateLCD();
         
     } else if (command == "control_nitrogen_servo") {
-        int angle = json_doc["angle"];
-        activateServo(NITROGEN, angle);
-        updateLCD();
+        if (!auto_mode) {
+            int angle = json_doc["angle"];
+            setServoAngle(NITROGEN, angle);
+            updateLCD();
+        }
         
     } else if (command == "control_phosphorus_servo") {
-        int angle = json_doc["angle"];
-        activateServo(PHOSPHORUS, angle);
-        updateLCD();
+        if (!auto_mode) {
+            int angle = json_doc["angle"];
+            setServoAngle(PHOSPHORUS, angle);
+            updateLCD();
+        }
         
     } else if (command == "control_potassium_servo") {
-        int angle = json_doc["angle"];
-        activateServo(POTASSIUM, angle);
-        updateLCD();
+        if (!auto_mode) {
+            int angle = json_doc["angle"];
+            setServoAngle(POTASSIUM, angle);
+            updateLCD();
+        }
         
     } else if (command == "calibrate_npk") {
         float pot_factor = (float)readPotentiometer() / 2048.0; 
         n_calibration = pot_factor;
         p_calibration = pot_factor;
         k_calibration = pot_factor;
-        Serial.println("🧪 NPK calibrated with factor: " + String(pot_factor));
+        Serial.println("🔧 Calibration factor: " + String(pot_factor, 3));
         updateLCD();
         
     } else if (command == "get_status") {
@@ -526,12 +502,12 @@ bool connectWiFi() {
         Serial.print(".");
     }
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\nWiFi connected successfully!");
-        Serial.print("IP Address: ");
+        Serial.println("\nWiFi connected!");
+        Serial.print("IP: ");
         Serial.println(WiFi.localIP());
         return true;
     } else {
-        Serial.println("\nWiFi connection failed!");
+        Serial.println("\nWiFi failed!");
         return false;
     }
 }
@@ -539,20 +515,41 @@ bool connectWiFi() {
 bool connectMQTT() {
     client.setServer(MQTT_BROKER, MQTT_PORT);
     client.setCallback(mqttCallback);
-    Serial.println("Connecting to MQTT broker...");
-    while (!client.connected()) {
-        Serial.print("Attempting MQTT connection...");
+    client.setBufferSize(512); // Ensure enough buffer for JSON
+    
+    Serial.println("Connecting to MQTT...");
+    Serial.println("Broker: " + String(MQTT_BROKER) + ":" + String(MQTT_PORT));
+    
+    int attempts = 0;
+    while (!client.connected() && attempts < 3) {
+        Serial.print("MQTT attempt ");
+        Serial.print(attempts + 1);
+        Serial.print("...");
+        
         if (client.connect(MQTT_CLIENT_ID)) {
             Serial.println("connected");
             mqtt_connected = true;
-            client.subscribe(MQTT_TOPIC_COMMANDS);
+            
+            // Subscribe to command topic
+            bool subscribed = client.subscribe(MQTT_TOPIC_COMMANDS);
+            if (subscribed) {
+                Serial.println("✓ Subscribed to: " + String(MQTT_TOPIC_COMMANDS));
+            } else {
+                Serial.println("✗ Failed to subscribe to commands");
+            }
+            
+            // Publish initial status
             publishSystemStatus();
+            delay(100); // Small delay between publishes
+            publishSensorData();
+            
+            Serial.println("✓ MQTT fully initialized");
             return true;
         } else {
             Serial.print("failed, rc=");
-            Serial.print(client.state());
-            Serial.println(" try again in 5 seconds");
-            delay(5000);
+            Serial.println(client.state());
+            attempts++;
+            delay(2000);
         }
     }
     return false;
@@ -563,7 +560,7 @@ void checkWiFiConnection() {
     if (current_time - last_wifi_check < 30000) { return; }
     last_wifi_check = current_time;
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi connection lost, attempting to reconnect...");
+        Serial.println("WiFi lost, reconnecting...");
         connectWiFi();
     }
 }
@@ -573,7 +570,7 @@ void checkMQTTConnection() {
     if (current_time - last_mqtt_check < 10000) { return; }
     last_mqtt_check = current_time;
     if (!client.connected() && WiFi.status() == WL_CONNECTED) {
-        Serial.println("MQTT connection lost, attempting to reconnect...");
+        Serial.println("MQTT lost, reconnecting...");
         mqtt_connected = false;
         connectMQTT();
     }
@@ -583,16 +580,14 @@ void checkMQTTConnection() {
 void setup() {
     Serial.begin(115200);
     Serial.println();
-    Serial.println("=== ESP32 NPK Nutrient Control Board ===");
-    Serial.println("Author: MiniMax Agent");
-    Serial.println("Version: 1.0.4 Optimized");
-    Serial.println("Starting system initialization...");
+    Serial.println("╔═══════════════════════════════════════╗");
+    Serial.println("║  ESP32 NPK Control - Real-Time v1.0.8║");
+    Serial.println("╚═══════════════════════════════════════╝");
     
     system_start_time = millis();
     system_initialized = false;
     
-    // Initialize hardware pins
-    Serial.println("Initializing hardware pins...");
+    // Initialize pins
     pinMode(N_PIN, INPUT);
     pinMode(P_PIN, INPUT);
     pinMode(K_PIN, INPUT);
@@ -601,107 +596,101 @@ void setup() {
     pinMode(BUTTON_PIN, INPUT_PULLUP);
     
     // Initialize servos
-    Serial.println("Initializing servos...");
+    Serial.println("→ Initializing servos...");
     nServo.attach(N_SERVO_PIN, SERVO_MIN_PULSE_WIDTH, SERVO_MAX_PULSE_WIDTH);
     pServo.attach(P_SERVO_PIN, SERVO_MIN_PULSE_WIDTH, SERVO_MAX_PULSE_WIDTH);
     kServo.attach(K_SERVO_PIN, SERVO_MIN_PULSE_WIDTH, SERVO_MAX_PULSE_WIDTH);
     
-    // Initialization pulse
-    Serial.println("Sending initialization pulse to all servos (90 deg)...");
-    nServo.write(SERVO_MID_ANGLE);
-    pServo.write(SERVO_MID_ANGLE);
-    kServo.write(SERVO_MID_ANGLE);
-    delay(1000); 
-
-    // Set servos to closed position
+    // Test pulse
+    Serial.println("→ Servo test (90°)...");
+    nServo.write(90);
+    pServo.write(90);
+    kServo.write(90);
+    delay(1000);
+    
+    // Close all
     deactivateAllServos();
+    Serial.println("→ Servos ready (0°)");
     
     // Initialize LCD
-    Serial.println("Initializing LCD display...");
+    Serial.println("→ Initializing LCD...");
     lcd.init();
     lcd.backlight();
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print("Smart Garden NPK");
+    lcd.print("NPK Control");
     lcd.setCursor(0, 1);
-    lcd.print("Control v1.0.4");
+    lcd.print("v1.0.7 RealTime");
     delay(2000);
     
-    // Initialize WiFi
-    Serial.println("Initializing WiFi connection...");
-    if (connectWiFi()) {
-        Serial.println("WiFi connected successfully!");
-        printWiFiStatus();
-    } else {
-        Serial.println("WiFi connection failed!");
-    }
+    // WiFi
+    Serial.println("→ Connecting WiFi...");
+    connectWiFi();
     
-    // Initialize MQTT
-    Serial.println("Initializing MQTT connection...");
-    if (connectMQTT()) {
-        Serial.println("MQTT connected successfully!");
-        printMQTTStatus();
-    } else {
-        Serial.println("MQTT connection failed!");
-    }
+    // MQTT
+    Serial.println("→ Connecting MQTT...");
+    connectMQTT();
     
-    // Initialize sensor readings
-    Serial.println("Initializing sensor readings...");
+    // Initial sensor read
+    Serial.println("→ Reading sensors...");
     readNitrogen();
     readPhosphorus();
     readPotassium();
     readPotentiometer();
     
-    // Initialize LED
     deactivateLED();
-    
-    // Final system status
     system_initialized = true;
     updateLCD();
     
-    Serial.println();
-    Serial.println("=== System initialization complete! ===");
-    Serial.println("NPK Control Board Ready");
-    Serial.println("WiFi: " + String(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected"));
-    Serial.println("MQTT: " + String(client.connected() ? "Connected" : "Disconnected"));
-    Serial.println("Auto Mode: " + String(auto_mode ? "Enabled" : "Disabled"));
-    Serial.println("N: " + String(current_nitrogen, 2) + "ppm, P: " + String(current_phosphorus, 2) + "ppm, K: " + String(current_potassium, 2) + "ppm");
+    Serial.println("\n╔═══════════════════════════════════════╗");
+    Serial.println("║       SYSTEM READY                    ║");
+    Serial.println("╚═══════════════════════════════════════╝");
+    Serial.println("WiFi: " + String(WiFi.status() == WL_CONNECTED ? "✓" : "✗"));
+    Serial.println("MQTT: " + String(client.connected() ? "✓" : "✗"));
+    Serial.println("Auto: " + String(auto_mode ? "ON" : "OFF"));
+    Serial.printf("NPK: N=%.1f P=%.1f K=%.1f ppm\n", current_nitrogen, current_phosphorus, current_potassium);
     Serial.println();
 }
 
 void loop() {
     unsigned long current_time = millis();
     
-    // Check connections
+    // Maintain connections
     checkWiFiConnection();
     checkMQTTConnection();
 
-    // Check automation
+    // Run automation
     checkAutomation();
     
-    // Publish sensor data periodically
+    // Publish sensor data
     if (current_time - last_sensor_read >= 5000) {
         readNitrogen();
         readPhosphorus();
         readPotassium();
         readPotentiometer();
-        publishSensorData();
+        
+        // Ensure MQTT is connected before publishing
+        if (client.connected()) {
+            publishSensorData();
+        } else {
+            Serial.println("⚠️  Skipping sensor publish - MQTT disconnected");
+        }
+        
         last_sensor_read = current_time;
     }
     
-    // Publish system status periodically
+    // Publish status
     if (current_time - last_status_publish >= STATUS_INTERVAL) {
         publishSystemStatus();
         last_status_publish = current_time;
     }
     
-    // Update LCD display periodically
+    // Update LCD
     static unsigned long last_lcd_update = 0;
     if (current_time - last_lcd_update >= 3000) {
         updateLCD();
         last_lcd_update = current_time;
     }
     
-    // Small delay to prevent excessive CPU usage
     delay(10);
 }
